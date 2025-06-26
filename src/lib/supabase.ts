@@ -213,6 +213,18 @@ export interface QuizQuestion {
   created_at: string;
 }
 
+export interface SiteSettings {
+  id: string;
+  setting_key: string;
+  setting_value: string;
+  setting_type: 'text' | 'number' | 'boolean' | 'json';
+  description?: string;
+  category: 'footer' | 'header' | 'general' | 'contact' | 'homepage';
+  is_editable: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface QuizAttempt {
   id: string;
   quiz_id: string;
@@ -1824,5 +1836,144 @@ export const studentAPI = {
 
     if (error) throw error;
     return data;
+  }
+};
+
+// Site Settings API functions
+export const siteSettingsAPI = {
+  // Get all site settings
+  async getAll() {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('*')
+      .order('category', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get settings by category
+  async getByCategory(category: 'footer' | 'header' | 'general' | 'contact' | 'homepage') {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('*')
+      .eq('category', category)
+      .order('setting_key', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get a specific setting by key
+  async getByKey(settingKey: string) {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('*')
+      .eq('setting_key', settingKey)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Update a setting (admin only)
+  async updateSetting(settingKey: string, settingValue: string) {
+    console.log('Updating setting:', settingKey, 'with value:', settingValue);
+
+    const { data, error } = await supabase
+      .from('site_settings')
+      .update({
+        setting_value: settingValue,
+        updated_at: new Date().toISOString()
+      })
+      .eq('setting_key', settingKey)
+      .eq('is_editable', true)
+      .select();
+
+    console.log('Update result:', { data, error });
+
+    if (error) {
+      console.error('Update error:', error);
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      throw new Error(`No editable setting found with key: ${settingKey}`);
+    }
+
+    return data[0];
+  },
+
+  // Create a new setting (admin only)
+  async createSetting(settingData: {
+    setting_key: string;
+    setting_value: string;
+    setting_type: 'text' | 'number' | 'boolean' | 'json';
+    description?: string;
+    category: 'footer' | 'header' | 'general' | 'contact' | 'homepage';
+    is_editable?: boolean;
+  }) {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .insert([{
+        ...settingData,
+        is_editable: settingData.is_editable ?? true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Delete a setting (admin only)
+  async deleteSetting(settingKey: string) {
+    const { error } = await supabase
+      .from('site_settings')
+      .delete()
+      .eq('setting_key', settingKey)
+      .eq('is_editable', true);
+
+    if (error) throw error;
+  },
+
+  // Get footer settings as a structured object
+  async getFooterSettings() {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('*')
+      .eq('category', 'footer')
+      .order('setting_key', { ascending: true });
+
+    if (error) throw error;
+
+    // Convert to structured object
+    const footerSettings: any = {};
+    data?.forEach(setting => {
+      footerSettings[setting.setting_key] = setting.setting_value;
+    });
+
+    return footerSettings;
+  },
+
+  // Get homepage settings as a structured object
+  async getHomepageSettings() {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('*')
+      .eq('category', 'homepage')
+      .order('setting_key', { ascending: true });
+
+    if (error) throw error;
+
+    // Convert to structured object
+    const homepageSettings: any = {};
+    data?.forEach(setting => {
+      homepageSettings[setting.setting_key] = setting.setting_value;
+    });
+
+    return homepageSettings;
   }
 };

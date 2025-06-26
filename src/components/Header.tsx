@@ -23,7 +23,7 @@ const Header = () => {
               <h1 className="text-white font-bold text-xl lg:text-2xl">
                 Sancta Maria College
               </h1>
-              <p className="text-blue-200 text-sm">of Nursing</p>
+              <p className="text-blue-200 text-sm">of Nursing and Midwifery</p>
             </div>
           </div>
 
@@ -46,7 +46,7 @@ const Header = () => {
                 activeTab === 'updates' ? 'text-blue-200' : ''
               }`}
             >
-              📢 Updates
+              Updates
               <span className={`absolute -bottom-1 left-0 h-0.5 bg-blue-200 transition-all duration-300 ${
                 activeTab === 'updates' ? 'w-full' : 'w-0 group-hover:w-full'
               }`}></span>
@@ -57,7 +57,7 @@ const Header = () => {
                 activeTab === 'documents' ? 'text-blue-200' : ''
               }`}
             >
-              📁 Documents
+              Documents
               <span className={`absolute -bottom-1 left-0 h-0.5 bg-blue-200 transition-all duration-300 ${
                 activeTab === 'documents' ? 'w-full' : 'w-0 group-hover:w-full'
               }`}></span>
@@ -70,7 +70,7 @@ const Header = () => {
                   : 'bg-blue-600 hover:bg-blue-500 text-white'
               }`}
             >
-              📝 Apply Now
+              Apply Now
             </button>
             <button
               onClick={() => setActiveTab('login')}
@@ -80,7 +80,7 @@ const Header = () => {
                   : 'border-2 border-white text-white hover:bg-white hover:text-blue-900'
               }`}
             >
-              👤 Login
+              Login
             </button>
           </nav>
 
@@ -115,7 +115,7 @@ const Header = () => {
                   : 'text-white hover:text-blue-200 hover:bg-blue-700'
               }`}
             >
-              🏠 Home
+              Home
             </button>
             <button
               onClick={() => {
@@ -128,7 +128,7 @@ const Header = () => {
                   : 'text-white hover:text-blue-200 hover:bg-blue-700'
               }`}
             >
-              📢 Updates
+              Updates
             </button>
             <button
               onClick={() => {
@@ -141,7 +141,7 @@ const Header = () => {
                   : 'text-white hover:text-blue-200 hover:bg-blue-700'
               }`}
             >
-              📁 Documents
+              Documents
             </button>
             <button
               onClick={() => {
@@ -154,7 +154,7 @@ const Header = () => {
                   : 'bg-blue-600 hover:bg-blue-500 text-white'
               }`}
             >
-              📝 Apply Now
+              Apply Now
             </button>
             <button
               onClick={() => {
@@ -167,7 +167,7 @@ const Header = () => {
                   : 'border-2 border-white text-white hover:bg-white hover:text-blue-900'
               }`}
             >
-              👤 Login
+              Login
             </button>
           </div>
         </div>

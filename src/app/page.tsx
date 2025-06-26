@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import LoginSection from '@/components/LoginSection';
@@ -8,9 +8,28 @@ import ApplyNowForm from '@/components/ApplyNowForm';
 import UpdatesSection from '@/components/UpdatesSection';
 import DocumentsSection from '@/components/DocumentsSection';
 import { TabProvider, useTab } from '@/contexts/TabContext';
+import { siteSettingsAPI } from '@/lib/supabase';
 
 const MainContent = () => {
   const { activeTab, setActiveTab } = useTab();
+  const [homepageSettings, setHomepageSettings] = useState<any>({});
+
+  useEffect(() => {
+    fetchHomepageSettings();
+  }, []);
+
+  const fetchHomepageSettings = async () => {
+    try {
+      const settings = await siteSettingsAPI.getHomepageSettings();
+      setHomepageSettings(settings);
+    } catch (error) {
+      console.error('Failed to fetch homepage settings:', error);
+      // Use default values if fetch fails
+      setHomepageSettings({
+        welcome_message: 'Welcome to Sancta Maria College of Nursing and Midwifery'
+      });
+    }
+  };
 
   const renderContent = () => {
     switch (activeTab) {
@@ -32,9 +51,7 @@ const MainContent = () => {
               <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
                 <div className="text-center max-w-4xl mx-auto">
                   <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-                    Welcome to <span className="text-blue-600">Sancta Maria College</span>
-                    <br />
-                    <span className="text-3xl md:text-4xl text-blue-800">of Nursing</span>
+                    <span className="text-blue-600">{homepageSettings.welcome_message || 'Welcome to Sancta Maria College of Nursing and Midwifery'}</span>
                   </h1>
                   <p className="text-xl md:text-2xl text-gray-600 mb-8 leading-relaxed">
                     Shaping the future of healthcare through excellence in nursing education,
