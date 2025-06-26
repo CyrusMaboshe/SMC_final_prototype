@@ -1,0 +1,218 @@
+'use client';
+
+import { useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+
+export const useRealTimeUpdates = (
+  table: string,
+  onUpdate: () => void,
+  filter?: { column: string; value: any }
+) => {
+  useEffect(() => {
+    let subscription: any;
+
+    const setupSubscription = () => {
+      let channel = supabase
+        .channel(`${table}_changes`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: table,
+            ...(filter && { filter: `${filter.column}=eq.${filter.value}` })
+          },
+          (payload) => {
+            console.log(`Real-time update for ${table}:`, payload);
+            onUpdate();
+          }
+        );
+
+      subscription = channel.subscribe();
+    };
+
+    setupSubscription();
+
+    return () => {
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
+    };
+  }, [table, onUpdate, filter]);
+};
+
+export const useStudentRealTimeUpdates = (studentId: string, onUpdate: () => void) => {
+  useEffect(() => {
+    if (!studentId) return;
+
+    const subscriptions: any[] = [];
+
+    // Subscribe to CA results
+    const caChannel = supabase
+      .channel('ca_results_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ca_results',
+          filter: `student_id=eq.${studentId}`
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to exam results
+    const examChannel = supabase
+      .channel('exam_results_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'exam_results',
+          filter: `student_id=eq.${studentId}`
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to quiz attempts
+    const quizChannel = supabase
+      .channel('quiz_attempts_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'quiz_attempts',
+          filter: `student_id=eq.${studentId}`
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to assignment submissions
+    const assignmentChannel = supabase
+      .channel('assignment_submissions_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'assignment_submissions',
+          filter: `student_id=eq.${studentId}`
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to course enrollments
+    const enrollmentChannel = supabase
+      .channel('course_enrollments_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'course_enrollments',
+          filter: `student_id=eq.${studentId}`
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to invoices
+    const invoiceChannel = supabase
+      .channel('invoices_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoices',
+          filter: `student_id=eq.${studentId}`
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    subscriptions.push(caChannel, examChannel, quizChannel, assignmentChannel, enrollmentChannel, invoiceChannel);
+
+    return () => {
+      subscriptions.forEach(subscription => {
+        supabase.removeChannel(subscription);
+      });
+    };
+  }, [studentId, onUpdate]);
+};
+
+export const useAdminRealTimeUpdates = (onUpdate: () => void) => {
+  useEffect(() => {
+    const subscriptions: any[] = [];
+
+    // Subscribe to students table
+    const studentsChannel = supabase
+      .channel('students_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'students'
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to lecturers table
+    const lecturersChannel = supabase
+      .channel('lecturers_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'lecturers'
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to courses table
+    const coursesChannel = supabase
+      .channel('courses_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'courses'
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to applications table
+    const applicationsChannel = supabase
+      .channel('applications_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'applications'
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    subscriptions.push(studentsChannel, lecturersChannel, coursesChannel, applicationsChannel);
+
+    return () => {
+      subscriptions.forEach(subscription => {
+        supabase.removeChannel(subscription);
+      });
+    };
+  }, [onUpdate]);
+};
