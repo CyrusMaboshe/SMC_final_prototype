@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, LecturerProfile, supabase, lecturerAPI, adminAPI } from '@/lib/supabase';
 import { useRealTimeUpdates } from '@/hooks/useRealTimeUpdates';
+import QuizManager from '@/components/QuizManager';
+import QuizResultsAnalytics from '@/components/QuizResultsAnalytics';
 
 // CA Results Manager Component
 const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }) => {
@@ -17,9 +19,13 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
     assessment_name: '',
     score: '',
     max_score: '100',
-    assessment_date: new Date().toISOString().split('T')[0]
+    assessment_date: new Date().toISOString().split('T')[0],
+    semester: 1,
+    academic_year: '2024-2025'
   });
   const [editingResult, setEditingResult] = useState<any>(null);
+  const [selectedSemester, setSelectedSemester] = useState(1);
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
 
 
 
@@ -27,7 +33,7 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
     if (profile?.id) {
       loadCAResults();
     }
-  }, [profile]);
+  }, [profile, selectedSemester, selectedAcademicYear]);
 
   useEffect(() => {
     if (selectedCourse) {
@@ -38,7 +44,7 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
   const loadCAResults = async () => {
     try {
       setLoading(true);
-      const results = await lecturerAPI.getCAResults(profile.id);
+      const results = await lecturerAPI.getCAResults(profile.id, undefined, selectedAcademicYear, selectedSemester);
       setCAResults(results);
     } catch (error) {
       console.error('Error loading CA results:', error);
@@ -59,8 +65,25 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedCourse || !selectedStudent || !formData.assessment_name || !formData.score) {
-      alert('Please fill in all required fields');
+    console.log('CA Form submission started');
+
+    if (!profile?.id) {
+      alert('Error: Lecturer profile not loaded. Please refresh the page and try again.');
+      return;
+    }
+
+    // Comprehensive validation
+    const validationErrors = [];
+
+    if (!selectedCourse) validationErrors.push('Course not selected');
+    if (!selectedStudent) validationErrors.push('Student not selected');
+    if (!formData.assessment_name.trim()) validationErrors.push('Assessment name is required');
+    if (!formData.score.trim()) validationErrors.push('Score is required');
+    if (!formData.max_score.trim()) validationErrors.push('Max score is required');
+    if (!formData.assessment_date) validationErrors.push('Assessment date is required');
+
+    if (validationErrors.length > 0) {
+      alert('Validation errors:\n' + validationErrors.join('\n'));
       return;
     }
 
@@ -68,8 +91,18 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
       const score = parseFloat(formData.score);
       const maxScore = parseFloat(formData.max_score);
 
+      if (isNaN(score) || isNaN(maxScore)) {
+        alert('Please enter valid numeric scores');
+        return;
+      }
+
       if (score > maxScore) {
         alert('Score cannot be greater than maximum score');
+        return;
+      }
+
+      if (score < 0 || maxScore <= 0) {
+        alert('Please enter valid positive scores');
         return;
       }
 
@@ -81,15 +114,18 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
           assessment_date: formData.assessment_date
         }, profile.id);
       } else {
-        await lecturerAPI.createCAResult({
+        const caResultData = {
           student_id: selectedStudent,
           course_id: selectedCourse,
-          assessment_name: formData.assessment_name,
+          assessment_name: formData.assessment_name.trim(),
           score: score,
           max_score: maxScore,
           assessment_date: formData.assessment_date,
+          semester: formData.semester,
+          academic_year: formData.academic_year,
           created_by: profile.id
-        });
+        };
+        await lecturerAPI.createCAResult(caResultData);
       }
 
       // Reset form
@@ -97,7 +133,9 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
         assessment_name: '',
         score: '',
         max_score: '100',
-        assessment_date: new Date().toISOString().split('T')[0]
+        assessment_date: new Date().toISOString().split('T')[0],
+        semester: 1,
+        academic_year: '2024-2025'
       });
       setSelectedCourse('');
       setSelectedStudent('');
@@ -110,7 +148,7 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
       alert(editingResult ? 'CA result updated successfully!' : 'CA result added successfully!');
     } catch (error) {
       console.error('Error saving CA result:', error);
-      alert('Error saving CA result. Please try again.');
+      alert(`Error saving CA result: ${error.message || 'Please try again.'}`);
     }
   };
 
@@ -122,7 +160,9 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
       assessment_name: result.assessment_name,
       score: result.score.toString(),
       max_score: result.max_score.toString(),
-      assessment_date: result.assessment_date
+      assessment_date: result.assessment_date,
+      semester: result.semester || 1,
+      academic_year: result.academic_year || '2024-2025'
     });
     setShowAddForm(true);
   };
@@ -159,7 +199,10 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Manage CA Results - Semester One</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Manage CA Results</h2>
+          <p className="text-sm text-gray-600 mt-1">Academic Year: {selectedAcademicYear} | Semester {selectedSemester}</p>
+        </div>
         <button
           onClick={() => {
             setShowAddForm(true);
@@ -168,13 +211,48 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
               assessment_name: '',
               score: '',
               max_score: '100',
-              assessment_date: new Date().toISOString().split('T')[0]
+              assessment_date: new Date().toISOString().split('T')[0],
+              semester: 1,
+              academic_year: '2024-2025'
             });
           }}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
         >
           Add CA Result
         </button>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Academic Year
+            </label>
+            <select
+              value={selectedAcademicYear}
+              onChange={(e) => setSelectedAcademicYear(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="2024-2025">2024-2025</option>
+              <option value="2025-2026">2025-2026</option>
+              <option value="2026-2027">2026-2027</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Semester
+            </label>
+            <select
+              value={selectedSemester}
+              onChange={(e) => setSelectedSemester(parseInt(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value={1}>Semester 1</option>
+              <option value={2}>Semester 2</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Add/Edit Form */}
@@ -232,6 +310,39 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
                       {student.student_id} - {student.first_name} {student.last_name}
                     </option>
                   ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Academic Year *
+                </label>
+                <select
+                  value={formData.academic_year}
+                  onChange={(e) => setFormData(prev => ({ ...prev, academic_year: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="2024-2025">2024-2025</option>
+                  <option value="2025-2026">2025-2026</option>
+                  <option value="2026-2027">2026-2027</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Semester *
+                </label>
+                <select
+                  value={formData.semester}
+                  onChange={(e) => setFormData(prev => ({ ...prev, semester: parseInt(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value={1}>Semester 1</option>
+                  <option value={2}>Semester 2</option>
                 </select>
               </div>
             </div>
@@ -336,6 +447,12 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
                     Student
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Academic Year
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Semester
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Assessment
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -363,6 +480,14 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {result.students?.student_id} - {result.students?.first_name} {result.students?.last_name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {result.academic_year || '2024-2025'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        Semester {result.semester || 1}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {result.assessment_name}
@@ -486,18 +611,35 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
       semester: formData.semester
     });
 
-    if (!selectedCourse || !selectedStudent || !formData.final_score) {
-      alert('Please fill in all required fields');
-      return;
-    }
+    // Comprehensive validation
+    const validationErrors = [];
 
-    if (!formData.academic_year || !formData.semester) {
-      alert('Please ensure academic year and semester are selected');
+    if (!profile?.id) validationErrors.push('Lecturer profile not loaded');
+    if (!selectedCourse) validationErrors.push('Course not selected');
+    if (!selectedStudent) validationErrors.push('Student not selected');
+    if (!formData.final_score.trim()) validationErrors.push('Final score is required');
+    if (!formData.academic_year) validationErrors.push('Academic year is required');
+    if (!formData.semester) validationErrors.push('Semester is required');
+
+    if (validationErrors.length > 0) {
+      alert('Validation errors:\n' + validationErrors.join('\n'));
       return;
     }
 
     try {
       const score = parseFloat(formData.final_score);
+
+      // Validate score
+      if (isNaN(score)) {
+        alert('Please enter a valid numeric score');
+        return;
+      }
+
+      if (score < 0 || score > 100) {
+        alert('Score must be between 0 and 100');
+        return;
+      }
+
       const { grade, gpa, status } = calculateGradeAndGPA(score);
 
       console.log('Final result form data:', {
@@ -535,6 +677,18 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
           comments: formData.comments
         };
         console.log('Final result data to be created:', resultData);
+        console.log('Data types check:', {
+          student_id: typeof resultData.student_id,
+          course_id: typeof resultData.course_id,
+          academic_year: typeof resultData.academic_year,
+          semester: typeof resultData.semester,
+          final_score: typeof resultData.final_score,
+          final_grade: typeof resultData.final_grade,
+          gpa_points: typeof resultData.gpa_points,
+          status: typeof resultData.status,
+          submitted_by: typeof resultData.submitted_by,
+          comments: typeof resultData.comments
+        });
         await lecturerAPI.createFinalResult(resultData);
       }
 
@@ -559,7 +713,19 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
       alert(editingResult ? 'Final result updated successfully!' : 'Final result added successfully!');
     } catch (error) {
       console.error('Error saving final result:', error);
-      alert('Error saving final result. Please try again.');
+      console.error('Error details:', error.message);
+      console.error('Full error object:', JSON.stringify(error, null, 2));
+
+      let errorMessage = 'Please try again.';
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.error) {
+        errorMessage = error.error.message || error.error;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+
+      alert(`Error saving final result: ${errorMessage}`);
     }
   };
 
@@ -1175,6 +1341,7 @@ const LecturerDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [courses, setCourses] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
+  const [quizzes, setQuizzes] = useState<any[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
@@ -1203,6 +1370,7 @@ const LecturerDashboard = () => {
     if (profile?.id) {
       fetchCourses();
       fetchStudents();
+      fetchQuizzes();
     }
   }, [profile]);
 
@@ -1297,6 +1465,17 @@ const LecturerDashboard = () => {
     }
   };
 
+  const fetchQuizzes = async () => {
+    try {
+      if (profile?.id) {
+        const data = await lecturerAPI.getQuizzes(profile.id);
+        setQuizzes(data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching quizzes:', error);
+    }
+  };
+
   const handleEnrollStudent = async (studentId: string, courseId: string) => {
     setEnrollmentLoading(true);
     setError('');
@@ -1335,15 +1514,6 @@ const LecturerDashboard = () => {
 
 
 
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'courses', label: 'My Courses', icon: '📚' },
-    { id: 'students', label: 'Course Students', icon: '👥' },
-    { id: 'ca-results', label: 'Manage CA Results', icon: '📈' },
-    { id: 'exam-results', label: 'Manage Exam Results', icon: '📋' },
-    { id: 'quizzes', label: 'Manage Quizzes', icon: '🧠' },
-    { id: 'assignments', label: 'Manage Assignments', icon: '📝' }
-  ];
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -1391,7 +1561,7 @@ const LecturerDashboard = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-purple-600">Active Quizzes</p>
-                    <p className="text-2xl font-bold text-purple-900">0</p>
+                    <p className="text-2xl font-bold text-purple-900">{quizzes.length}</p>
                   </div>
                 </div>
               </div>
@@ -1626,23 +1796,10 @@ const LecturerDashboard = () => {
         return <FinalResultsManager profile={profile} courses={courses} />;
 
       case 'quizzes':
-        return (
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Manage Quizzes</h2>
-              <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                Create Quiz
-              </button>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🧠</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Quizzes Created</h3>
-              <p className="text-gray-600">Create and manage quizzes for your courses here.</p>
-            </div>
-          </div>
-        );
+        return <QuizManager profile={profile} courses={courses} />;
+
+      case 'quiz-results':
+        return <QuizResultsAnalytics lecturerId={profile?.id} quizzes={[]} />;
 
       case 'assignments':
         return (
@@ -1667,6 +1824,17 @@ const LecturerDashboard = () => {
         return <div>Tab content not found</div>;
     }
   };
+
+  const tabs = [
+    { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'courses', label: 'My Courses', icon: '📚' },
+    { id: 'students', label: 'Course Students', icon: '👥' },
+    { id: 'ca-results', label: 'Manage CA Results', icon: '📈' },
+    { id: 'exam-results', label: 'Manage Exam Results', icon: '📋' },
+    { id: 'quizzes', label: 'Manage Quizzes', icon: '🧠' },
+    { id: 'quiz-results', label: 'Quiz Results', icon: '📊' },
+    { id: 'assignments', label: 'Manage Assignments', icon: '📝' }
+  ];
 
   if (loading) {
     return (
@@ -1705,7 +1873,6 @@ const LecturerDashboard = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-
         {/* Tab Navigation */}
         <div className="bg-white rounded-lg shadow-sm mb-8">
           <div className="border-b border-gray-200">
@@ -1733,84 +1900,6 @@ const LecturerDashboard = () => {
           </div>
         </div>
       </div>
-
-      {/* Enrollment Modal */}
-      {showEnrollModal && selectedCourse && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  Enroll Students in {selectedCourse.course_name}
-                </h2>
-                <button
-                  onClick={() => setShowEnrollModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="mb-4">
-                <p className="text-sm text-gray-600">
-                  Course: <span className="font-medium">{selectedCourse.course_code}</span>
-                </p>
-                <p className="text-sm text-gray-600">
-                  Currently Enrolled: <span className="font-medium">{selectedCourse.course_enrollments?.length || 0} students</span>
-                </p>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Available Students</h3>
-
-                {students.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500">No students available for enrollment.</p>
-                  </div>
-                ) : (
-                  <div className="max-h-96 overflow-y-auto">
-                    <div className="space-y-2">
-                      {students
-                        .filter(student => !selectedCourse.course_enrollments?.some((enrollment: any) => enrollment.student_id === student.id))
-                        .map((student: any) => (
-                          <div key={student.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-                            <div>
-                              <p className="font-medium text-gray-900">
-                                {student.first_name} {student.last_name}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                ID: {student.student_id} | {student.program} | Year {student.year_of_study}
-                              </p>
-                              <p className="text-sm text-gray-500">{student.email}</p>
-                            </div>
-                            <button
-                              onClick={() => handleEnrollStudent(student.id, selectedCourse.id)}
-                              disabled={enrollmentLoading}
-                              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                            >
-                              {enrollmentLoading ? 'Enrolling...' : 'Enroll'}
-                            </button>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end pt-6">
-                <button
-                  onClick={() => setShowEnrollModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

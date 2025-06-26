@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, StudentProfile, supabase, studentAPI } from '@/lib/supabase';
+import QRCode from 'qrcode';
+import StudentQuizInterface from '@/components/StudentQuizInterface';
+import StudentQuizResults from '@/components/StudentQuizResults';
 
 const ChangePasswordForm = ({ user }: { user: any }) => {
   const [formData, setFormData] = useState({
@@ -118,11 +121,15 @@ const ChangePasswordForm = ({ user }: { user: any }) => {
 
 const CAResultsTab = ({ studentId }: { studentId?: string }) => {
   const [caResults, setCAResults] = useState<any[]>([]);
+  const [finalResults, setFinalResults] = useState<any[]>([]);
+  const [studentProfile, setStudentProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (studentId) {
       fetchCAResults();
+      fetchFinalResults();
+      fetchStudentProfile();
     }
   }, [studentId]);
 
@@ -163,6 +170,26 @@ const CAResultsTab = ({ studentId }: { studentId?: string }) => {
     }
   };
 
+  const fetchFinalResults = async () => {
+    try {
+      const data = await studentAPI.getFinalResults(studentId!);
+      setFinalResults(data || []);
+    } catch (error) {
+      console.error('Failed to fetch final results:', error);
+    }
+  };
+
+  const fetchStudentProfile = async () => {
+    try {
+      const profileData = JSON.parse(localStorage.getItem('user_profile') || '{}');
+      setStudentProfile(profileData);
+    } catch (error) {
+      console.error('Failed to fetch student profile:', error);
+    }
+  };
+
+
+
   const getStatusBadge = (percentage: number) => {
     if (percentage >= 50) {
       return (
@@ -187,68 +214,230 @@ const CAResultsTab = ({ studentId }: { studentId?: string }) => {
     );
   }
 
+  // Calculate Clear Pass status
+  const calculateClearPassStatus = () => {
+    if (caResults.length === 0) return null;
+
+    // Group results by semester and academic year
+    const semesterGroups = caResults.reduce((acc: any, result: any) => {
+      const key = `${result.academic_year || 'Unknown'}-${result.semester || 'Unknown'}`;
+      if (!acc[key]) {
+        acc[key] = [];
+      }
+      acc[key].push(result);
+      return acc;
+    }, {});
+
+    return Object.entries(semesterGroups).map(([key, results]: [string, any]) => {
+      const [academicYear, semester] = key.split('-');
+      const hasFailure = results.some((result: any) => result.percentage < 50);
+      return {
+        academicYear,
+        semester,
+        status: hasFailure ? "Incomplete - Repeat Required" : "Clear Pass",
+        results: results,
+        hasFailure
+      };
+    });
+  };
+
+  const semesterStatus = calculateClearPassStatus();
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Continuous Assessment Results</h2>
+    <>
+      <style jsx global>{`
+        @media print {
+          .print\\:hidden { display: none !important; }
+          .space-y-6 > * + * { margin-top: 1rem !important; }
+          .shadow-md { box-shadow: none !important; }
+          .rounded-lg { border-radius: 0 !important; }
+          table {
+            page-break-inside: avoid;
+            border-collapse: collapse;
+            width: 100%;
+          }
+          .grid { page-break-inside: avoid; }
+        }
+      `}</style>
+      <div className="space-y-6">
+      {/* Print Button */}
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={handlePrint}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 print:hidden"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+          </svg>
+          Print Report
+        </button>
+      </div>
 
-      {caResults.length === 0 ? (
-        <div className="bg-gray-50 rounded-lg p-8 text-center">
-          <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl">📊</span>
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No CA Results Available</h3>
-          <p className="text-gray-600">Your continuous assessment results will appear here once published by lecturers.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {caResults.map((result: any) => (
-            <div key={result.id} className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{result.assessment_name}</h3>
-                  <p className="text-sm text-gray-600">
-                    {result.courses?.course_code} - {result.courses?.course_name}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {result.score}/{result.max_score}
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    {result.percentage?.toFixed(1)}%
-                  </div>
-                </div>
-              </div>
+      {/* Header Section */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="text-center border-b pb-4 mb-4">
+          <h1 className="text-2xl font-bold text-blue-800 mb-2">SANCTA MARIA COLLEGE OF NURSING</h1>
+          <h2 className="text-lg font-semibold text-gray-700">CONTINUOUS ASSESSMENT (CA) RESULTS</h2>
 
-              <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
-                <span>Assessment Date: {new Date(result.assessment_date).toLocaleDateString()}</span>
-                <span>Added: {new Date(result.created_at).toLocaleDateString()}</span>
-              </div>
-
-              <div className="flex justify-between items-center mb-4">
-                <div className="w-full bg-gray-200 rounded-full h-2 mr-4">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${result.percentage || 0}%` }}
-                  ></div>
+          {/* Semester Status Display */}
+          {semesterStatus && semesterStatus.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {semesterStatus.map((status: any, index: number) => (
+                <div key={index} className="flex justify-center items-center gap-4">
+                  <span className="text-sm font-medium text-gray-600">
+                    Academic Year: {status.academicYear} | Semester: {status.semester}
+                  </span>
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                    status.hasFailure
+                      ? 'bg-red-100 text-red-800 border border-red-200'
+                      : 'bg-green-100 text-green-800 border border-green-200'
+                  }`}>
+                    {status.status}
+                  </span>
                 </div>
-                {getStatusBadge(result.percentage)}
-              </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div>
+            <p><span className="font-semibold">Student Name:</span> {studentProfile?.first_name} {studentProfile?.last_name}</p>
+            <p><span className="font-semibold">Student ID:</span> {studentProfile?.student_id}</p>
+          </div>
+          <div>
+            <p><span className="font-semibold">Batch:</span> {studentProfile?.batch || 'N/A'}</p>
+            <p><span className="font-semibold">Program:</span> {studentProfile?.program || 'Nursing'}</p>
+          </div>
+          <div>
+            <p><span className="font-semibold">Academic Year:</span> 2024/2025</p>
+            <p><span className="font-semibold">Date:</span> {new Date().toLocaleDateString()}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Academic Areas - CA Results */}
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="bg-blue-50 px-6 py-3 border-b">
+          <h3 className="text-lg font-semibold text-gray-800">Academic Areas</h3>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse border border-gray-300">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border border-gray-300">Subject</th>
+                <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300">Academic Year</th>
+                <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300">Semester</th>
+                <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300">CA Score (%)</th>
+                <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300">Status</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white">
+              {caResults.map((result: any) => {
+                return (
+                  <tr key={result.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 text-sm font-medium text-gray-900 border border-gray-300">
+                      {result.courses?.course_name || result.courses?.course_code}
+                    </td>
+                    <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                      {result.academic_year || 'N/A'}
+                    </td>
+                    <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                      {result.semester || 'N/A'}
+                    </td>
+                    <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                      {result.percentage?.toFixed(1)}%
+                    </td>
+                    <td className="px-4 py-2 text-center text-sm border border-gray-300">
+                      {getStatusBadge(result.percentage)}
+                    </td>
+                  </tr>
+                );
+              })}
+
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+
+
+      {/* Grading Scale and Signatures */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Grading Scale */}
+        <div className="bg-white rounded-lg shadow-md p-4">
+          <h4 className="text-sm font-semibold text-gray-800 mb-3">Activity Grade Scale: Grading scale are as follows:</h4>
+          <div className="grid grid-cols-5 gap-2 text-xs">
+            <div className="text-center border border-gray-300 p-1">
+              <div className="font-semibold">A</div>
+              <div>90-100</div>
+            </div>
+            <div className="text-center border border-gray-300 p-1">
+              <div className="font-semibold">B</div>
+              <div>80-89</div>
+            </div>
+            <div className="text-center border border-gray-300 p-1">
+              <div className="font-semibold">C</div>
+              <div>70-79</div>
+            </div>
+            <div className="text-center border border-gray-300 p-1">
+              <div className="font-semibold">D</div>
+              <div>60-69</div>
+            </div>
+            <div className="text-center border border-gray-300 p-1">
+              <div className="font-semibold">F</div>
+              <div>0-59</div>
+            </div>
+          </div>
+          <p className="text-xs mt-3 text-gray-600">
+            Activity Grade Scale: Grading scale are as follows: 5 = Excellent, 4 = Very Good, 3 = Good, 2 = Fair, 1 = Poor
+          </p>
+          <div className="mt-4">
+            <p className="text-xs"><span className="font-semibold">Class:</span> ________________</p>
+            <p className="text-xs"><span className="font-semibold">Description:</span> ________________</p>
+          </div>
+        </div>
+
+        {/* Signatures */}
+        <div className="bg-white rounded-lg shadow-md p-4">
+          <div className="grid grid-cols-1 gap-6">
+            <div className="text-center">
+              <div className="border-b border-gray-400 mb-2 pb-8"></div>
+              <p className="text-xs font-semibold">Signature of Class Teacher</p>
+            </div>
+            <div className="text-center">
+              <div className="border-b border-gray-400 mb-2 pb-8"></div>
+              <p className="text-xs font-semibold">Institution Seal</p>
+            </div>
+            <div className="text-center">
+              <div className="border-b border-gray-400 mb-2 pb-8"></div>
+              <p className="text-xs font-semibold">Principal Signature</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+    </>
   );
 };
 
 const ExamResultsTab = ({ studentId }: { studentId?: string }) => {
   const [examResults, setExamResults] = useState<any[]>([]);
+  const [caResults, setCAResults] = useState<any[]>([]);
+  const [studentProfile, setStudentProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [qrCodes, setQrCodes] = useState<{[key: string]: string}>({});
 
   useEffect(() => {
     if (studentId) {
       fetchExamResults();
+      fetchCAResults();
+      fetchStudentProfile();
     }
   }, [studentId]);
 
@@ -289,6 +478,97 @@ const ExamResultsTab = ({ studentId }: { studentId?: string }) => {
     }
   };
 
+  const fetchCAResults = async () => {
+    try {
+      const data = await studentAPI.getCAResults(studentId!);
+      setCAResults(data || []);
+    } catch (error) {
+      console.error('Failed to fetch CA results:', error);
+    }
+  };
+
+  const fetchStudentProfile = async () => {
+    try {
+      const profileData = JSON.parse(localStorage.getItem('user_profile') || '{}');
+      setStudentProfile(profileData);
+    } catch (error) {
+      console.error('Failed to fetch student profile:', error);
+    }
+  };
+
+  // Generate QR codes for results
+  const generateQRCodes = async () => {
+    const codes: {[key: string]: string} = {};
+
+    for (const result of examResults) {
+      try {
+        const qrData = {
+          studentId: studentProfile?.student_id,
+          studentName: `${studentProfile?.first_name} ${studentProfile?.last_name}`,
+          courseCode: result.courses?.course_code,
+          courseName: result.courses?.course_name,
+          academicYear: result.academic_year,
+          semester: result.semester,
+          finalScore: result.final_score,
+          grade: result.final_grade,
+          verificationId: `SMC-${result.id.substring(0, 8).toUpperCase()}`,
+          issueDate: new Date().toISOString().split('T')[0]
+        };
+
+        const qrString = await QRCode.toDataURL(JSON.stringify(qrData), {
+          width: 100,
+          margin: 1,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        });
+
+        codes[result.id] = qrString;
+      } catch (error) {
+        console.error('Error generating QR code:', error);
+      }
+    }
+
+    setQrCodes(codes);
+  };
+
+  // Generate QR codes when results are loaded
+  useEffect(() => {
+    if (examResults.length > 0 && studentProfile) {
+      generateQRCodes();
+    }
+  }, [examResults, studentProfile]);
+
+  // Calculate Clear Pass status for Final Results
+  const calculateFinalResultsStatus = () => {
+    if (examResults.length === 0) return null;
+
+    // Group results by semester and academic year
+    const semesterGroups = examResults.reduce((acc: any, result: any) => {
+      const key = `${result.academic_year || 'Unknown'}-${result.semester || 'Unknown'}`;
+      if (!acc[key]) {
+        acc[key] = [];
+      }
+      acc[key].push(result);
+      return acc;
+    }, {});
+
+    return Object.entries(semesterGroups).map(([key, results]: [string, any]) => {
+      const [academicYear, semester] = key.split('-');
+      const hasFailure = results.some((result: any) => result.final_score < 50);
+      return {
+        academicYear,
+        semester,
+        status: hasFailure ? "Incomplete - Repeat Required" : "Clear Pass",
+        results: results,
+        hasFailure
+      };
+    });
+  };
+
+  const finalResultsStatus = calculateFinalResultsStatus();
+
   const getStatusBadge = (status: string) => {
     if (status === 'Pass') {
       return (
@@ -313,72 +593,483 @@ const ExamResultsTab = ({ studentId }: { studentId?: string }) => {
     );
   }
 
+
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Final Exam Results</h2>
-
-      {examResults.length === 0 ? (
-        <div className="bg-gray-50 rounded-lg p-8 text-center">
-          <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-2xl">📋</span>
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No Final Results Available</h3>
-          <p className="text-gray-600">Your final exam results will appear here once published by lecturers.</p>
+    <>
+      <style jsx global>{`
+        @media print {
+          .print\\:hidden { display: none !important; }
+          .space-y-6 > * + * { margin-top: 1rem !important; }
+          .shadow-md { box-shadow: none !important; }
+          .rounded-lg { border-radius: 0 !important; }
+          table {
+            page-break-inside: avoid;
+            border-collapse: collapse;
+            width: 100%;
+          }
+          .grid { page-break-inside: avoid; }
+        }
+      `}</style>
+      <div className="space-y-6">
+        {/* Print Button */}
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={handlePrint}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 print:hidden"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Print Report
+          </button>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {examResults.map((result: any) => (
-            <div key={result.id} className="bg-white rounded-lg border border-gray-200 p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Final Exam Result</h3>
-                  <p className="text-sm text-gray-600">
-                    {result.courses?.course_code} - {result.courses?.course_name}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {result.academic_year} - Semester {result.semester}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-green-600">
-                    {result.final_score}%
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    Grade: {result.final_grade} | GPA: {result.gpa_points}
-                  </div>
-                </div>
-              </div>
 
-              <div className="flex justify-between items-center text-sm text-gray-500 mb-3">
-                <span>Academic Year: {result.academic_year}</span>
-                <span>Published: {new Date(result.submission_date).toLocaleDateString()}</span>
+        {/* Header Section */}
+        <div className="bg-white rounded-lg shadow-md p-6 relative">
+          {/* QR Code in top left corner */}
+          {examResults.length > 0 && Object.keys(qrCodes).length > 0 && (
+            <div className="absolute top-4 left-4">
+              <div className="flex flex-col items-center">
+                <img
+                  src={Object.values(qrCodes)[0]}
+                  alt="Results QR Code"
+                  className="w-20 h-20 mb-1"
+                />
+                <span className="text-xs text-gray-500">
+                  Verification Code
+                </span>
               </div>
-
-              <div className="flex justify-between items-center mb-4">
-                <div className="w-full bg-gray-200 rounded-full h-2 mr-4">
-                  <div
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      (result.final_score || 0) >= 70 ? 'bg-green-600' :
-                      (result.final_score || 0) >= 50 ? 'bg-yellow-600' : 'bg-red-600'
-                    }`}
-                    style={{ width: `${result.final_score || 0}%` }}
-                  ></div>
-                </div>
-                {getStatusBadge(result.status)}
-              </div>
-
-              {result.comments && (
-                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-700">
-                    <strong>Comments:</strong> {result.comments}
-                  </p>
-                </div>
-              )}
             </div>
-          ))}
+          )}
+
+          <div className="text-center border-b pb-4 mb-4 ml-24">
+            <h1 className="text-2xl font-bold text-blue-800 mb-2">SANCTA MARIA COLLEGE OF NURSING</h1>
+            <h2 className="text-lg font-semibold text-gray-700">FINAL EXAMINATION RESULTS</h2>
+
+            {/* Final Results Status Display */}
+            {finalResultsStatus && finalResultsStatus.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {finalResultsStatus.map((status: any, index: number) => (
+                  <div key={index} className="flex justify-center items-center gap-4">
+                    <span className="text-sm font-medium text-gray-600">
+                      Academic Year: {status.academicYear} | Semester: {status.semester}
+                    </span>
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                      status.hasFailure
+                        ? 'bg-red-100 text-red-800 border border-red-200'
+                        : 'bg-green-100 text-green-800 border border-green-200'
+                    }`}>
+                      {status.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm ml-24">
+            <div>
+              <p><span className="font-semibold">Student Name:</span> {studentProfile?.first_name} {studentProfile?.last_name}</p>
+              <p><span className="font-semibold">Student ID:</span> {studentProfile?.student_id}</p>
+            </div>
+            <div>
+              <p><span className="font-semibold">Batch:</span> {studentProfile?.batch || 'N/A'}</p>
+              <p><span className="font-semibold">Program:</span> {studentProfile?.program || 'Nursing'}</p>
+            </div>
+            <div>
+              <p><span className="font-semibold">Academic Year:</span> 2024/2025</p>
+              <p><span className="font-semibold">Date:</span> {new Date().toLocaleDateString()}</p>
+            </div>
+          </div>
         </div>
-      )}
-    </div>
+
+        {/* Final Results Table */}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="bg-blue-50 px-6 py-3 border-b">
+            <h3 className="text-lg font-semibold text-gray-800">Final Examination Results</h3>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse border border-gray-300">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase border border-gray-300">Subject</th>
+                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300">Academic Year</th>
+                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300">Semester</th>
+                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300">Final Score</th>
+                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300">Final Grade</th>
+                  <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase border border-gray-300">Status</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {examResults.length > 0 ? (
+                  examResults.map((result: any) => {
+                    return (
+                      <tr key={result.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 text-sm font-medium text-gray-900 border border-gray-300">
+                          {result.courses?.course_name || result.courses?.course_code}
+                        </td>
+                        <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                          {result.academic_year || 'N/A'}
+                        </td>
+                        <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                          {result.semester || 'N/A'}
+                        </td>
+                        <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                          {result.final_score?.toFixed(1)}%
+                        </td>
+                        <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                          {result.final_grade}
+                        </td>
+                        <td className="px-4 py-2 text-center text-sm text-gray-900 border border-gray-300">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            result.status === 'Pass' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {result.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500 border border-gray-300">
+                      No final results available yet. Results will appear here once they are published by your lecturers.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Grading Scale and Signatures */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Grading Scale */}
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <h4 className="text-sm font-semibold text-gray-800 mb-3">Grading Scale:</h4>
+            <div className="grid grid-cols-5 gap-2 text-xs">
+              <div className="text-center border border-gray-300 p-1">
+                <div className="font-semibold">A</div>
+                <div>90-100</div>
+              </div>
+              <div className="text-center border border-gray-300 p-1">
+                <div className="font-semibold">B</div>
+                <div>80-89</div>
+              </div>
+              <div className="text-center border border-gray-300 p-1">
+                <div className="font-semibold">C</div>
+                <div>70-79</div>
+              </div>
+              <div className="text-center border border-gray-300 p-1">
+                <div className="font-semibold">D</div>
+                <div>60-69</div>
+              </div>
+              <div className="text-center border border-gray-300 p-1">
+                <div className="font-semibold">F</div>
+                <div>0-59</div>
+              </div>
+            </div>
+            <div className="mt-4">
+              <p className="text-xs"><span className="font-semibold">Class:</span> ________________</p>
+              <p className="text-xs"><span className="font-semibold">Description:</span> ________________</p>
+            </div>
+          </div>
+
+          {/* Signatures */}
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <div className="grid grid-cols-1 gap-6">
+              <div className="text-center">
+                <div className="border-b border-gray-400 mb-2 pb-8"></div>
+                <p className="text-xs font-semibold">Signature of Class Teacher</p>
+              </div>
+              <div className="text-center">
+                <div className="border-b border-gray-400 mb-2 pb-8"></div>
+                <p className="text-xs font-semibold">Institution Seal</p>
+              </div>
+              <div className="text-center">
+                <div className="border-b border-gray-400 mb-2 pb-8"></div>
+                <p className="text-xs font-semibold">Principal Signature</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+const ExamSlipsTab = ({ studentId }: { studentId?: string }) => {
+  const [enrolledCourses, setEnrolledCourses] = useState<any[]>([]);
+  const [studentProfile, setStudentProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedSemester, setSelectedSemester] = useState(1);
+  const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
+
+  useEffect(() => {
+    if (studentId) {
+      fetchEnrolledCourses();
+      fetchStudentProfile();
+    }
+  }, [studentId]);
+
+  const fetchEnrolledCourses = async () => {
+    try {
+      setLoading(true);
+      const data = await studentAPI.getEnrolledCourses(studentId!);
+      setEnrolledCourses(data || []);
+    } catch (error) {
+      console.error('Failed to fetch enrolled courses:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStudentProfile = async () => {
+    try {
+      const profileData = JSON.parse(localStorage.getItem('user_profile') || '{}');
+      setStudentProfile(profileData);
+    } catch (error) {
+      console.error('Failed to fetch student profile:', error);
+    }
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: A4;
+            margin: 0.5in;
+          }
+          body {
+            margin: 0;
+            font-family: 'Times New Roman', serif;
+            background: linear-gradient(45deg, transparent 24%, rgba(0,0,0,0.02) 25%, rgba(0,0,0,0.02) 26%, transparent 27%, transparent 74%, rgba(0,0,0,0.02) 75%, rgba(0,0,0,0.02) 76%, transparent 77%),
+                        linear-gradient(-45deg, transparent 24%, rgba(0,0,0,0.02) 25%, rgba(0,0,0,0.02) 26%, transparent 27%, transparent 74%, rgba(0,0,0,0.02) 75%, rgba(0,0,0,0.02) 76%, transparent 77%);
+            background-size: 20px 20px;
+          }
+          .print\\:hidden { display: none !important; }
+          .space-y-6 > * + * { margin-top: 1rem !important; }
+          .shadow-md { box-shadow: none !important; }
+          .rounded-lg { border-radius: 0 !important; }
+          table {
+            page-break-inside: avoid;
+            border-collapse: collapse;
+            width: 100%;
+          }
+          .grid { page-break-inside: avoid; }
+          .guillotine-pattern {
+            position: relative;
+          }
+          .guillotine-pattern::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+              repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0,0,0,0.03) 2px,
+                rgba(0,0,0,0.03) 4px
+              ),
+              repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 2px,
+                rgba(0,0,0,0.03) 2px,
+                rgba(0,0,0,0.03) 4px
+              );
+            pointer-events: none;
+            z-index: 1;
+          }
+          .security-watermark {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 72px;
+            color: rgba(0,0,0,0.03);
+            z-index: 0;
+            pointer-events: none;
+            font-weight: bold;
+          }
+        }
+      `}</style>
+      <div className="space-y-6 guillotine-pattern">
+        {/* Security Watermark */}
+        <div className="security-watermark">SANCTA MARIA COLLEGE</div>
+
+        {/* Controls */}
+        <div className="flex justify-between items-center mb-6 print:hidden">
+          <h2 className="text-2xl font-bold text-gray-900">Exam Slips</h2>
+          <div className="flex space-x-4">
+            <select
+              value={selectedAcademicYear}
+              onChange={(e) => setSelectedAcademicYear(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2"
+            >
+              <option value="2024-2025">2024-2025</option>
+              <option value="2023-2024">2023-2024</option>
+            </select>
+            <select
+              value={selectedSemester}
+              onChange={(e) => setSelectedSemester(Number(e.target.value))}
+              className="border border-gray-300 rounded-lg px-3 py-2"
+            >
+              <option value={1}>Semester 1</option>
+              <option value={2}>Semester 2</option>
+            </select>
+            <button
+              onClick={handlePrint}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Print Exam Slip
+            </button>
+          </div>
+        </div>
+
+        {/* Exam Slip */}
+        <div className="bg-white rounded-lg shadow-md p-8">
+          <div className="text-center border-b pb-6 mb-6">
+            <h1 className="text-3xl font-bold text-blue-800 mb-2">SANCTA MARIA COLLEGE OF NURSING</h1>
+            <h2 className="text-xl font-semibold text-gray-700">EXAMINATION SLIP</h2>
+            <p className="text-lg text-gray-600 mt-2">Academic Year: {selectedAcademicYear} | Semester: {selectedSemester}</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Student Information</h3>
+              <div className="space-y-2">
+                <p><span className="font-semibold">Student Name:</span> {studentProfile?.first_name} {studentProfile?.last_name}</p>
+                <p><span className="font-semibold">Student ID:</span> {studentProfile?.student_id}</p>
+                <p><span className="font-semibold">Program:</span> {studentProfile?.program || 'Nursing'}</p>
+                <p><span className="font-semibold">Year of Study:</span> {studentProfile?.year_of_study || 'N/A'}</p>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Examination Details</h3>
+              <div className="space-y-2">
+                <p><span className="font-semibold">Examination Period:</span> {selectedSemester === 1 ? 'First Semester' : 'Second Semester'}</p>
+                <p><span className="font-semibold">Academic Year:</span> {selectedAcademicYear}</p>
+                <p><span className="font-semibold">Issue Date:</span> {new Date().toLocaleDateString()}</p>
+                <p><span className="font-semibold">Status:</span> <span className="text-green-600 font-medium">Eligible</span></p>
+              </div>
+            </div>
+          </div>
+
+          {/* Enrolled Courses Table */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Enrolled Courses for Examination</h3>
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse border border-gray-300">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase border border-gray-300">Course Code</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase border border-gray-300">Course Name</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-500 uppercase border border-gray-300">Credits</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 uppercase border border-gray-300">Lecturer</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-500 uppercase border border-gray-300">Exam Date</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-500 uppercase border border-gray-300">Time</th>
+                    <th className="px-4 py-3 text-center text-sm font-medium text-gray-500 uppercase border border-gray-300">Venue</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {enrolledCourses.map((enrollment: any) => (
+                    <tr key={enrollment.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 border border-gray-300">
+                        {enrollment.courses?.course_code}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border border-gray-300">
+                        {enrollment.courses?.course_name}
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
+                        {enrollment.courses?.credits || 3}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900 border border-gray-300">
+                        {enrollment.courses?.lecturers?.first_name} {enrollment.courses?.lecturers?.last_name}
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
+                        TBA
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
+                        TBA
+                      </td>
+                      <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
+                        TBA
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Instructions and Signatures */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Examination Instructions</h3>
+              <ul className="text-sm text-gray-700 space-y-2">
+                <li>• Report to the examination venue 15 minutes before the scheduled time</li>
+                <li>• Bring your student ID card and this examination slip</li>
+                <li>• Mobile phones and electronic devices are not allowed</li>
+                <li>• Follow all examination regulations and guidelines</li>
+                <li>• Any form of academic dishonesty will result in disqualification</li>
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Verification</h3>
+              <div className="space-y-8">
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Academic Registrar</p>
+                  <div className="border-b border-gray-300 w-48"></div>
+                  <p className="text-xs text-gray-500 mt-1">Signature & Date</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Student Signature</p>
+                  <div className="border-b border-gray-300 w-48"></div>
+                  <p className="text-xs text-gray-500 mt-1">Signature & Date</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="mt-8 pt-6 border-t border-gray-200 text-center">
+            <p className="text-sm text-gray-600">
+              This examination slip is valid only for the specified academic period and must be presented during examinations.
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              Generated on {new Date().toLocaleDateString()} | Sancta Maria College of Nursing
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
   );
 };
 
@@ -638,32 +1329,10 @@ const StudentDashboard = () => {
         return <ExamResultsTab studentId={profile?.id} />;
 
       case 'quiz-results':
-        return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Quiz Results</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🧠</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Quiz Results Available</h3>
-              <p className="text-gray-600">Your quiz results will appear here after completing quizzes.</p>
-            </div>
-          </div>
-        );
+        return <StudentQuizResults studentId={profile?.id} />;
 
       case 'attempt-quizzes':
-        return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Available Quizzes</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">✏️</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Quizzes Available</h3>
-              <p className="text-gray-600">Available quizzes will appear here when published by your lecturers.</p>
-            </div>
-          </div>
-        );
+        return <StudentQuizInterface studentId={profile?.id} />;
 
       case 'submit-assignments':
         return (
@@ -694,18 +1363,7 @@ const StudentDashboard = () => {
         );
 
       case 'exam-slips':
-        return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Exam Slips</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🎫</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Exam Slips Available</h3>
-              <p className="text-gray-600">Your exam slips will be available here before exam periods.</p>
-            </div>
-          </div>
-        );
+        return <ExamSlipsTab studentId={profile?.id} />;
 
       case 'enrolled-courses':
         return <EnrolledCoursesTab studentId={profile?.id} />;

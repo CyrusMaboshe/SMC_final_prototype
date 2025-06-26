@@ -184,6 +184,49 @@ export interface Document {
   updated_at: string;
 }
 
+export interface Quiz {
+  id: string;
+  course_id: string;
+  title: string;
+  description?: string;
+  instructions?: string;
+  time_limit?: number;
+  max_attempts?: number;
+  total_marks: number;
+  start_time: string;
+  end_time: string;
+  created_by: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuizQuestion {
+  id: string;
+  quiz_id: string;
+  question_text: string;
+  question_type: 'multiple_choice' | 'checkbox' | 'text';
+  options?: string[];
+  correct_answer: string;
+  marks: number;
+  order_number: number;
+  created_at: string;
+}
+
+export interface QuizAttempt {
+  id: string;
+  quiz_id: string;
+  student_id: string;
+  attempt_number: number;
+  answers: Record<string, string>;
+  score?: number;
+  percentage?: number;
+  started_at: string;
+  completed_at?: string;
+  time_taken?: number;
+  status: 'in_progress' | 'completed' | 'abandoned';
+}
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -743,6 +786,8 @@ export const lecturerAPI = {
     max_score: number;
     assessment_date: string;
     created_by: string;
+    academic_year?: string;
+    semester?: number;
   }) {
     // Verify lecturer has access to this course
     const hasAccess = await this.verifyLecturerCourseAccess(caData.created_by, caData.course_id);
@@ -765,12 +810,14 @@ export const lecturerAPI = {
 
     const percentage = (caData.score / caData.max_score) * 100;
 
+    const insertData = {
+      ...caData,
+      percentage: percentage
+    };
+
     const { data, error } = await supabase
       .from('ca_results')
-      .insert([{
-        ...caData,
-        percentage: percentage
-      }])
+      .insert([insertData])
       .select(`
         *,
         students(student_id, first_name, last_name),
@@ -778,11 +825,14 @@ export const lecturerAPI = {
       `)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error creating CA result:', error);
+      throw error;
+    }
     return data;
   },
 
-  async getCAResults(lecturerId: string, courseId?: string) {
+  async getCAResults(lecturerId: string, courseId?: string, academicYear?: string, semester?: number) {
     let query = supabase
       .from('ca_results')
       .select(`
@@ -794,6 +844,14 @@ export const lecturerAPI = {
 
     if (courseId) {
       query = query.eq('course_id', courseId);
+    }
+
+    if (academicYear) {
+      query = query.eq('academic_year', academicYear);
+    }
+
+    if (semester) {
+      query = query.eq('semester', semester);
     }
 
     const { data, error } = await query;
@@ -865,19 +923,14 @@ export const lecturerAPI = {
     submitted_by: string;
     comments?: string;
   }) {
-    console.log('createFinalResult: Starting with data:', resultData);
-
     // Verify lecturer has access to this course
-    console.log('createFinalResult: Verifying lecturer course access');
     const hasAccess = await this.verifyLecturerCourseAccess(resultData.submitted_by, resultData.course_id);
-    console.log('createFinalResult: Course access result:', hasAccess);
     if (!hasAccess) {
       throw new Error('Access denied: You can only add results for courses assigned to you');
     }
 
     // Verify student is enrolled in this course
-    console.log('createFinalResult: Checking student enrollment');
-    const { data: enrollment, error: enrollmentError } = await supabase
+    const { data: enrollment } = await supabase
       .from('course_enrollments')
       .select('id')
       .eq('student_id', resultData.student_id)
@@ -885,14 +938,12 @@ export const lecturerAPI = {
       .eq('status', 'enrolled')
       .single();
 
-    console.log('createFinalResult: Enrollment check result:', { enrollment, enrollmentError });
     if (!enrollment) {
       throw new Error('Student is not enrolled in this course');
     }
 
     // Check for duplicate final result
-    console.log('createFinalResult: Checking for duplicates');
-    const { data: existingResult, error: duplicateError } = await supabase
+    const { data: existingResult } = await supabase
       .from('final_results')
       .select('id')
       .eq('student_id', resultData.student_id)
@@ -901,18 +952,15 @@ export const lecturerAPI = {
       .eq('semester', resultData.semester)
       .single();
 
-    console.log('createFinalResult: Duplicate check result:', { existingResult, duplicateError });
     if (existingResult) {
       throw new Error('Final result already exists for this student, course, and semester');
     }
 
     // Insert the final result
-    console.log('createFinalResult: Inserting final result');
     const insertData = {
       ...resultData,
       submission_date: new Date().toISOString()
     };
-    console.log('createFinalResult: Insert data:', insertData);
 
     const { data, error } = await supabase
       .from('final_results')
@@ -924,9 +972,8 @@ export const lecturerAPI = {
       `)
       .single();
 
-    console.log('createFinalResult: Insert result:', { data, error });
     if (error) {
-      console.error('createFinalResult: Insert error:', error);
+      console.error('Error creating final result:', error);
       throw error;
     }
     return data;
@@ -989,7 +1036,10 @@ export const lecturerAPI = {
 
   // Verify lecturer has access to course
   async verifyLecturerCourseAccess(lecturerId: string, courseId: string) {
-    console.log('verifyLecturerCourseAccess: Checking access for lecturer:', lecturerId, 'course:', courseId);
+    if (!lecturerId || !courseId) {
+      return false;
+    }
+
     const { data, error } = await supabase
       .from('courses')
       .select('id')
@@ -998,14 +1048,10 @@ export const lecturerAPI = {
       .eq('is_active', true)
       .single();
 
-    console.log('verifyLecturerCourseAccess: Query result:', { data, error });
     if (error) {
-      console.log('verifyLecturerCourseAccess: Error occurred, returning false');
       return false;
     }
-    const hasAccess = !!data;
-    console.log('verifyLecturerCourseAccess: Final result:', hasAccess);
-    return hasAccess;
+    return !!data;
   },
 
   // Get enrolled students for a specific course
@@ -1023,6 +1069,332 @@ export const lecturerAPI = {
 
     if (error) throw error;
     return data?.map(enrollment => enrollment.students) || [];
+  },
+
+  // Quiz Management Functions
+
+  // Create Quiz
+  async createQuiz(quizData: {
+    course_id: string;
+    title: string;
+    description?: string;
+    instructions?: string;
+    time_limit?: number;
+    max_attempts?: number;
+    start_time: string;
+    end_time: string;
+    created_by: string;
+  }) {
+    const { data, error } = await supabase
+      .from('quizzes')
+      .insert([{
+        ...quizData,
+        total_marks: 0, // Will be updated when questions are added
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Update Quiz
+  async updateQuiz(quizId: string, quizData: {
+    title?: string;
+    description?: string;
+    instructions?: string;
+    time_limit?: number;
+    max_attempts?: number;
+    start_time?: string;
+    end_time?: string;
+    is_active?: boolean;
+  }, lecturerId: string) {
+    // Verify the quiz belongs to a course taught by this lecturer
+    const { data: quiz } = await supabase
+      .from('quizzes')
+      .select(`
+        id,
+        courses(lecturer_id)
+      `)
+      .eq('id', quizId)
+      .single();
+
+    if (!quiz) throw new Error('Quiz not found');
+    if (quiz.courses?.lecturer_id !== lecturerId) {
+      throw new Error('Unauthorized: You can only update quizzes for your courses');
+    }
+
+    const { data, error } = await supabase
+      .from('quizzes')
+      .update({
+        ...quizData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', quizId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Delete Quiz
+  async deleteQuiz(quizId: string, lecturerId: string) {
+    // Verify the quiz belongs to a course taught by this lecturer
+    const { data: quiz } = await supabase
+      .from('quizzes')
+      .select(`
+        id,
+        courses(lecturer_id)
+      `)
+      .eq('id', quizId)
+      .single();
+
+    if (!quiz) throw new Error('Quiz not found');
+    if (quiz.courses?.lecturer_id !== lecturerId) {
+      throw new Error('Unauthorized: You can only delete quizzes for your courses');
+    }
+
+    // Delete quiz questions first
+    await supabase
+      .from('quiz_questions')
+      .delete()
+      .eq('quiz_id', quizId);
+
+    // Delete quiz attempts
+    await supabase
+      .from('quiz_attempts')
+      .delete()
+      .eq('quiz_id', quizId);
+
+    // Delete the quiz
+    const { error } = await supabase
+      .from('quizzes')
+      .delete()
+      .eq('id', quizId);
+
+    if (error) throw error;
+  },
+
+  // Get Quizzes for Lecturer
+  async getQuizzes(lecturerId: string, courseId?: string) {
+    let query = supabase
+      .from('quizzes')
+      .select(`
+        *,
+        courses(id, course_code, course_name, lecturer_id),
+        quiz_questions(id),
+        quiz_attempts(id, status)
+      `)
+      .eq('courses.lecturer_id', lecturerId)
+      .order('created_at', { ascending: false });
+
+    if (courseId) {
+      query = query.eq('course_id', courseId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    // Add question count and attempt statistics
+    return data?.map(quiz => ({
+      ...quiz,
+      question_count: quiz.quiz_questions?.length || 0,
+      total_attempts: quiz.quiz_attempts?.length || 0,
+      completed_attempts: quiz.quiz_attempts?.filter((a: any) => a.status === 'completed').length || 0
+    }));
+  },
+
+  // Quiz Question Management Functions
+
+  // Create Quiz Question
+  async createQuizQuestion(questionData: {
+    quiz_id: string;
+    question_text: string;
+    question_type: 'multiple_choice' | 'checkbox' | 'text';
+    options?: string[];
+    correct_answer: string;
+    marks: number;
+    order_number: number;
+  }, lecturerId: string) {
+    // Verify the quiz belongs to a course taught by this lecturer
+    const { data: quiz } = await supabase
+      .from('quizzes')
+      .select(`
+        id,
+        courses(lecturer_id)
+      `)
+      .eq('id', questionData.quiz_id)
+      .single();
+
+    if (!quiz) throw new Error('Quiz not found');
+    if (quiz.courses?.lecturer_id !== lecturerId) {
+      throw new Error('Unauthorized: You can only add questions to your quizzes');
+    }
+
+    const { data, error } = await supabase
+      .from('quiz_questions')
+      .insert([{
+        ...questionData,
+        created_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Update quiz total marks
+    await this.updateQuizTotalMarks(questionData.quiz_id);
+
+    return data;
+  },
+
+  // Update Quiz Question
+  async updateQuizQuestion(questionId: string, questionData: {
+    question_text?: string;
+    question_type?: 'multiple_choice' | 'text';
+    options?: string[];
+    correct_answer?: string;
+    marks?: number;
+    order_number?: number;
+  }, lecturerId: string) {
+    // Verify the question belongs to a quiz in a course taught by this lecturer
+    const { data: question } = await supabase
+      .from('quiz_questions')
+      .select(`
+        id,
+        quiz_id,
+        quizzes(courses(lecturer_id))
+      `)
+      .eq('id', questionId)
+      .single();
+
+    if (!question) throw new Error('Question not found');
+    if (question.quizzes?.courses?.lecturer_id !== lecturerId) {
+      throw new Error('Unauthorized: You can only update questions in your quizzes');
+    }
+
+    const { data, error } = await supabase
+      .from('quiz_questions')
+      .update(questionData)
+      .eq('id', questionId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Update quiz total marks if marks changed
+    if (questionData.marks !== undefined) {
+      await this.updateQuizTotalMarks(question.quiz_id);
+    }
+
+    return data;
+  },
+
+  // Delete Quiz Question
+  async deleteQuizQuestion(questionId: string, lecturerId: string) {
+    // Verify the question belongs to a quiz in a course taught by this lecturer
+    const { data: question } = await supabase
+      .from('quiz_questions')
+      .select(`
+        id,
+        quiz_id,
+        quizzes(courses(lecturer_id))
+      `)
+      .eq('id', questionId)
+      .single();
+
+    if (!question) throw new Error('Question not found');
+    if (question.quizzes?.courses?.lecturer_id !== lecturerId) {
+      throw new Error('Unauthorized: You can only delete questions from your quizzes');
+    }
+
+    const { error } = await supabase
+      .from('quiz_questions')
+      .delete()
+      .eq('id', questionId);
+
+    if (error) throw error;
+
+    // Update quiz total marks
+    await this.updateQuizTotalMarks(question.quiz_id);
+  },
+
+  // Get Quiz Questions
+  async getQuizQuestions(quizId: string, lecturerId: string) {
+    // Verify the quiz belongs to a course taught by this lecturer
+    const { data: quiz } = await supabase
+      .from('quizzes')
+      .select(`
+        id,
+        courses(lecturer_id)
+      `)
+      .eq('id', quizId)
+      .single();
+
+    if (!quiz) throw new Error('Quiz not found');
+    if (quiz.courses?.lecturer_id !== lecturerId) {
+      throw new Error('Unauthorized: You can only view questions from your quizzes');
+    }
+
+    const { data, error } = await supabase
+      .from('quiz_questions')
+      .select('*')
+      .eq('quiz_id', quizId)
+      .order('order_number', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Update Quiz Total Marks (helper function)
+  async updateQuizTotalMarks(quizId: string) {
+    const { data: questions } = await supabase
+      .from('quiz_questions')
+      .select('marks')
+      .eq('quiz_id', quizId);
+
+    const totalMarks = questions?.reduce((sum, q) => sum + parseFloat(q.marks), 0) || 0;
+
+    await supabase
+      .from('quizzes')
+      .update({
+        total_marks: totalMarks,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', quizId);
+  },
+
+  // Get Quiz Results for Lecturer
+  async getQuizResults(lecturerId: string, quizId?: string) {
+    let query = supabase
+      .from('quiz_attempts')
+      .select(`
+        *,
+        students(student_id, first_name, last_name, email),
+        quizzes(
+          id,
+          title,
+          total_marks,
+          courses(id, course_code, course_name, lecturer_id)
+        )
+      `)
+      .eq('quizzes.courses.lecturer_id', lecturerId)
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false });
+
+    if (quizId) {
+      query = query.eq('quiz_id', quizId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+    return data;
   }
 };
 
@@ -1141,6 +1513,190 @@ export const studentAPI = {
 
     if (error) throw error;
     return data;
+  },
+
+  // Get Quiz Details with Questions for taking quiz
+  async getQuizForAttempt(quizId: string, studentId: string) {
+    // Check if student is enrolled in the course
+    const { data: quiz } = await supabase
+      .from('quizzes')
+      .select(`
+        *,
+        courses(id, course_code, course_name),
+        quiz_questions(id, question_text, question_type, options, marks, order_number)
+      `)
+      .eq('id', quizId)
+      .eq('is_active', true)
+      .single();
+
+    if (!quiz) throw new Error('Quiz not found or not active');
+
+    // Check if student is enrolled in the course
+    const { data: enrollment } = await supabase
+      .from('course_enrollments')
+      .select('id')
+      .eq('student_id', studentId)
+      .eq('course_id', quiz.courses.id)
+      .eq('status', 'enrolled')
+      .single();
+
+    if (!enrollment) throw new Error('Student not enrolled in this course');
+
+    // Check if quiz is within time limits
+    const now = new Date();
+    const startTime = new Date(quiz.start_time);
+    const endTime = new Date(quiz.end_time);
+
+    if (now < startTime) throw new Error('Quiz has not started yet');
+    if (now > endTime) throw new Error('Quiz has ended');
+
+    // Check existing attempts
+    const { data: attempts } = await supabase
+      .from('quiz_attempts')
+      .select('attempt_number, status')
+      .eq('quiz_id', quizId)
+      .eq('student_id', studentId)
+      .order('attempt_number', { ascending: false });
+
+    const completedAttempts = attempts?.filter(a => a.status === 'completed').length || 0;
+
+    if (quiz.max_attempts && completedAttempts >= quiz.max_attempts) {
+      throw new Error('Maximum attempts reached');
+    }
+
+    return {
+      ...quiz,
+      quiz_questions: quiz.quiz_questions.sort((a: any, b: any) => a.order_number - b.order_number),
+      attempts_used: completedAttempts,
+      attempts_remaining: quiz.max_attempts ? quiz.max_attempts - completedAttempts : null
+    };
+  },
+
+  // Start Quiz Attempt
+  async startQuizAttempt(quizId: string, studentId: string) {
+    // Get next attempt number
+    const { data: attempts } = await supabase
+      .from('quiz_attempts')
+      .select('attempt_number')
+      .eq('quiz_id', quizId)
+      .eq('student_id', studentId)
+      .order('attempt_number', { ascending: false })
+      .limit(1);
+
+    const nextAttemptNumber = (attempts?.[0]?.attempt_number || 0) + 1;
+
+    const { data, error } = await supabase
+      .from('quiz_attempts')
+      .insert([{
+        quiz_id: quizId,
+        student_id: studentId,
+        attempt_number: nextAttemptNumber,
+        started_at: new Date().toISOString(),
+        status: 'in_progress',
+        answers: {}
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Save Quiz Answer
+  async saveQuizAnswer(attemptId: string, questionId: string, answer: string) {
+    // Get current answers
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select('answers')
+      .eq('id', attemptId)
+      .single();
+
+    if (!attempt) throw new Error('Quiz attempt not found');
+
+    const updatedAnswers = {
+      ...attempt.answers,
+      [questionId]: answer
+    };
+
+    const { error } = await supabase
+      .from('quiz_attempts')
+      .update({ answers: updatedAnswers })
+      .eq('id', attemptId);
+
+    if (error) throw error;
+  },
+
+  // Submit Quiz Attempt
+  async submitQuizAttempt(attemptId: string) {
+    // Get attempt with quiz and questions
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select(`
+        *,
+        quizzes(
+          id,
+          total_marks,
+          quiz_questions(id, correct_answer, marks, question_type)
+        )
+      `)
+      .eq('id', attemptId)
+      .single();
+
+    if (!attempt) throw new Error('Quiz attempt not found');
+
+    // Calculate score
+    let totalScore = 0;
+    const questions = attempt.quizzes.quiz_questions;
+    const answers = attempt.answers || {};
+
+    questions.forEach((question: any) => {
+      const studentAnswer = answers[question.id];
+      if (studentAnswer && question.correct_answer) {
+        // For text questions, do case-insensitive comparison
+        if (question.question_type === 'text') {
+          if (studentAnswer.toLowerCase().trim() === question.correct_answer.toLowerCase().trim()) {
+            totalScore += parseFloat(question.marks);
+          }
+        } else if (question.question_type === 'checkbox') {
+          // For checkbox questions, compare sorted arrays
+          const studentAnswers = studentAnswer.split('|').sort();
+          const correctAnswers = question.correct_answer.split('|').sort();
+
+          // Check if arrays are equal
+          if (studentAnswers.length === correctAnswers.length &&
+              studentAnswers.every((answer, index) => answer === correctAnswers[index])) {
+            totalScore += parseFloat(question.marks);
+          }
+        } else {
+          // For multiple choice, exact match
+          if (studentAnswer === question.correct_answer) {
+            totalScore += parseFloat(question.marks);
+          }
+        }
+      }
+    });
+
+    const percentage = (totalScore / parseFloat(attempt.quizzes.total_marks)) * 100;
+    const timeTaken = Math.floor((new Date().getTime() - new Date(attempt.started_at).getTime()) / 1000);
+
+    const { error } = await supabase
+      .from('quiz_attempts')
+      .update({
+        completed_at: new Date().toISOString(),
+        score: totalScore,
+        percentage: percentage,
+        time_taken: timeTaken,
+        status: 'completed'
+      })
+      .eq('id', attemptId);
+
+    if (error) throw error;
+
+    return {
+      score: totalScore,
+      percentage: percentage,
+      time_taken: timeTaken
+    };
   },
 
   // Get Assignment Results for a student
