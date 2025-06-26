@@ -11,6 +11,37 @@ const nextConfig: NextConfig = {
     // your project has TypeScript errors.
     ignoreBuildErrors: true,
   },
+  // Optimize for Vercel deployment
+  output: 'standalone',
+  // External packages for server components
+  serverExternalPackages: ['@supabase/supabase-js'],
+  // Image optimization for Vercel
+  images: {
+    domains: ['tigknjhplktzqzradmkd.supabase.co'],
+    formats: ['image/webp', 'image/avif'],
+  },
+  // Security headers
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on'
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload'
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff'
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
