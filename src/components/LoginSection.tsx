@@ -1,17 +1,31 @@
 'use client';
 
-import React, { useState } from 'react';
-import { authAPI, AuthUser, StudentProfile, LecturerProfile } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import AuthLoadingSpinner, { AuthSuccessState } from '@/components/AuthLoadingSpinner';
 
 const LoginSection = () => {
   const [formData, setFormData] = useState({
     username: '',
     password: ''
   });
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const router = useRouter();
+  const [showSuccess, setShowSuccess] = useState(false);
+  const { login, authState, error, clearError, user, isActiveLogin } = useAuth();
+
+  // Clear error when user starts typing
+  useEffect(() => {
+    if (error) {
+      clearError();
+    }
+  }, [formData.username, formData.password]);
+
+  // Show success state briefly when authenticated during active login
+  useEffect(() => {
+    if (authState === 'authenticated' && user && isActiveLogin) {
+      setShowSuccess(true);
+      // The AuthContext will handle the redirect
+    }
+  }, [authState, user, isActiveLogin]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -23,36 +37,16 @@ const LoginSection = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError('');
+
+    if (!formData.username.trim() || !formData.password.trim()) {
+      return;
+    }
 
     try {
-      const { user, profile } = await authAPI.login(formData);
-
-      // Store user data in localStorage
-      localStorage.setItem('user_id', user.id);
-      localStorage.setItem('user_role', user.role);
-      localStorage.setItem('username', user.username);
-      localStorage.setItem('user_profile', JSON.stringify(profile));
-
-      // Redirect based on role
-      switch (user.role) {
-        case 'admin':
-          router.push('/admin/dashboard');
-          break;
-        case 'lecturer':
-          router.push('/lecturer/dashboard');
-          break;
-        case 'student':
-          router.push('/student/dashboard');
-          break;
-        default:
-          throw new Error('Invalid user role');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
-    } finally {
-      setIsLoading(false);
+      await login(formData);
+    } catch (err) {
+      // Error is handled by the AuthContext
+      console.error('Login error:', err);
     }
   };
 
@@ -70,7 +64,18 @@ const LoginSection = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
-          {error && (
+          {/* Show success state */}
+          {showSuccess && authState === 'authenticated' && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <AuthSuccessState
+                message="Login Successful!"
+                userRole={user?.role}
+              />
+            </div>
+          )}
+
+          {/* Show error state */}
+          {error && authState === 'error' && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="flex">
                 <svg className="w-5 h-5 text-red-400 mt-0.5 mr-3" fill="currentColor" viewBox="0 0 20 20">
@@ -81,6 +86,16 @@ const LoginSection = () => {
                   <p className="text-sm text-red-700 mt-1">{error}</p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Show loading state */}
+          {authState === 'authenticating' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <AuthLoadingSpinner
+                message="Authenticating..."
+                size="md"
+              />
             </div>
           )}
 
@@ -95,7 +110,8 @@ const LoginSection = () => {
               value={formData.username}
               onChange={handleInputChange}
               required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              disabled={authState === 'authenticating'}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="Enter your username or Student ID"
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -114,7 +130,8 @@ const LoginSection = () => {
               value={formData.password}
               onChange={handleInputChange}
               required
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              disabled={authState === 'authenticating'}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="Enter your password"
             />
           </div>
@@ -141,16 +158,23 @@ const LoginSection = () => {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={authState === 'authenticating' || (authState === 'authenticated' && isActiveLogin)}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-3 px-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 disabled:transform-none disabled:cursor-not-allowed"
           >
-            {isLoading ? (
+            {authState === 'authenticating' ? (
               <div className="flex items-center justify-center">
                 <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 Signing in...
+              </div>
+            ) : (authState === 'authenticated' && isActiveLogin) ? (
+              <div className="flex items-center justify-center">
+                <svg className="w-5 h-5 mr-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Success! Redirecting...
               </div>
             ) : (
               'Sign In'

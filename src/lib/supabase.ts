@@ -14,7 +14,7 @@ export interface LoginCredentials {
 export interface AuthUser {
   id: string;
   username: string;
-  role: 'admin' | 'lecturer' | 'student';
+  role: 'admin' | 'lecturer' | 'student' | 'accountant';
   is_active: boolean;
   last_login?: string;
 }
@@ -48,10 +48,21 @@ export interface LecturerProfile {
   status: 'active' | 'inactive';
 }
 
+export interface AccountantProfile {
+  id: string;
+  accountant_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  department?: string;
+  status: 'active' | 'inactive';
+}
+
 // Authentication API
 export const authAPI = {
   // Login function for all user types
-  async login(credentials: LoginCredentials): Promise<{ user: AuthUser; profile?: StudentProfile | LecturerProfile }> {
+  async login(credentials: LoginCredentials): Promise<{ user: AuthUser; profile?: StudentProfile | LecturerProfile | AccountantProfile }> {
     const { data, error } = await supabase
       .rpc('authenticate_user', {
         p_username: credentials.username,
@@ -85,6 +96,13 @@ export const authAPI = {
         .eq('user_id', user.id)
         .single();
       profile = lecturerData;
+    } else if (user.role === 'accountant') {
+      const { data: accountantData } = await supabase
+        .from('accountants')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      profile = accountantData;
     }
 
     return { user, profile };
@@ -115,7 +133,7 @@ export const authAPI = {
     return {
       id: userId,
       username: username,
-      role: userRole as 'admin' | 'lecturer' | 'student',
+      role: userRole as 'admin' | 'lecturer' | 'student' | 'accountant',
       is_active: true
     };
   },
@@ -237,6 +255,77 @@ export interface QuizAttempt {
   completed_at?: string;
   time_taken?: number;
   status: 'in_progress' | 'completed' | 'abandoned';
+}
+
+export interface Assignment {
+  id: string;
+  course_id: string;
+  title: string;
+  description?: string;
+  instructions?: string;
+  max_score: number;
+  due_date: string;
+  created_by: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssignmentSubmission {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  submission_text?: string;
+  file_path?: string;
+  submitted_at: string;
+  score?: number;
+  feedback?: string;
+  graded_by?: string;
+  graded_at?: string;
+  status: 'submitted' | 'graded' | 'late';
+}
+
+export interface FinancialRecord {
+  id: string;
+  student_id: string;
+  academic_year: string;
+  semester: number;
+  tuition_fee: number;
+  accommodation_fee?: number;
+  other_fees?: number;
+  total_amount: number;
+  amount_paid?: number;
+  balance: number;
+  payment_status: 'pending' | 'partial' | 'paid' | 'overdue';
+  due_date: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Invoice {
+  id: string;
+  student_id: string;
+  invoice_number: string;
+  description: string;
+  amount: number;
+  due_date?: string;
+  status: 'pending' | 'paid' | 'overdue';
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Payment {
+  id: string;
+  financial_record_id?: string;
+  student_id: string;
+  amount: number;
+  payment_method?: string;
+  reference_number?: string;
+  payment_date: string;
+  processed_by?: string;
+  notes?: string;
+  created_at: string;
 }
 
 export interface AdminUser {
@@ -1129,15 +1218,13 @@ export const lecturerAPI = {
       .from('quizzes')
       .select(`
         id,
-        courses(lecturer_id)
+        courses!inner(lecturer_id)
       `)
       .eq('id', quizId)
+      .eq('courses.lecturer_id', lecturerId)
       .single();
 
-    if (!quiz) throw new Error('Quiz not found');
-    if (quiz.courses?.lecturer_id !== lecturerId) {
-      throw new Error('Unauthorized: You can only update quizzes for your courses');
-    }
+    if (!quiz) throw new Error('Quiz not found or access denied');
 
     const { data, error } = await supabase
       .from('quizzes')
@@ -1160,15 +1247,13 @@ export const lecturerAPI = {
       .from('quizzes')
       .select(`
         id,
-        courses(lecturer_id)
+        courses!inner(lecturer_id)
       `)
       .eq('id', quizId)
+      .eq('courses.lecturer_id', lecturerId)
       .single();
 
-    if (!quiz) throw new Error('Quiz not found');
-    if (quiz.courses?.lecturer_id !== lecturerId) {
-      throw new Error('Unauthorized: You can only delete quizzes for your courses');
-    }
+    if (!quiz) throw new Error('Quiz not found or access denied');
 
     // Delete quiz questions first
     await supabase
@@ -1221,6 +1306,146 @@ export const lecturerAPI = {
     }));
   },
 
+  // Assignment Management Functions
+
+  // Create Assignment
+  async createAssignment(assignmentData: {
+    course_id: string;
+    title: string;
+    description?: string;
+    instructions?: string;
+    max_score: number;
+    due_date: string;
+    created_by: string;
+  }) {
+    // Verify lecturer has access to this course
+    const hasAccess = await this.verifyLecturerCourseAccess(assignmentData.created_by, assignmentData.course_id);
+    if (!hasAccess) {
+      throw new Error('Access denied: You can only create assignments for courses assigned to you');
+    }
+
+    const { data, error } = await supabase
+      .from('assignments')
+      .insert([{
+        ...assignmentData,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select(`
+        *,
+        courses(course_code, course_name)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get Assignments for a lecturer
+  async getAssignments(lecturerId: string) {
+    const { data, error } = await supabase
+      .from('assignments')
+      .select(`
+        *,
+        courses(course_code, course_name, lecturer_id),
+        assignment_submissions(
+          id,
+          student_id,
+          status,
+          submitted_at,
+          score,
+          students(student_id, first_name, last_name)
+        )
+      `)
+      .eq('courses.lecturer_id', lecturerId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get Assignment Submissions for a specific assignment
+  async getAssignmentSubmissions(assignmentId: string, lecturerId: string) {
+    // First verify lecturer has access to this assignment
+    const { data: assignment } = await supabase
+      .from('assignments')
+      .select(`
+        id,
+        title,
+        max_score,
+        courses!inner(lecturer_id, course_code, course_name)
+      `)
+      .eq('id', assignmentId)
+      .eq('courses.lecturer_id', lecturerId)
+      .single();
+
+    if (!assignment) throw new Error('Assignment not found or access denied');
+
+    const { data, error } = await supabase
+      .from('assignment_submissions')
+      .select(`
+        *,
+        students(student_id, first_name, last_name, email)
+      `)
+      .eq('assignment_id', assignmentId)
+      .order('submitted_at', { ascending: false });
+
+    if (error) throw error;
+    return { assignment, submissions: data };
+  },
+
+  // Grade Assignment Submission
+  async gradeAssignmentSubmission(submissionId: string, gradeData: {
+    score: number;
+    feedback?: string;
+    graded_by: string;
+  }) {
+    // First verify lecturer has access to this submission
+    const { data: submission } = await supabase
+      .from('assignment_submissions')
+      .select(`
+        id,
+        assignments!inner(
+          id,
+          max_score,
+          courses!inner(lecturer_id)
+        )
+      `)
+      .eq('id', submissionId)
+      .eq('assignments.courses.lecturer_id', gradeData.graded_by)
+      .single();
+
+    if (!submission) throw new Error('Submission not found or access denied');
+
+    // Validate score
+    const maxScore = (submission.assignments as any)?.max_score || 0;
+    if (gradeData.score < 0 || gradeData.score > maxScore) {
+      throw new Error(`Score must be between 0 and ${maxScore}`);
+    }
+
+    const { data, error } = await supabase
+      .from('assignment_submissions')
+      .update({
+        score: gradeData.score,
+        feedback: gradeData.feedback,
+        graded_by: gradeData.graded_by,
+        graded_at: new Date().toISOString(),
+        status: 'graded'
+      })
+      .eq('id', submissionId)
+      .select(`
+        *,
+        students(student_id, first_name, last_name),
+        assignments(title, max_score)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
   // Quiz Question Management Functions
 
   // Create Quiz Question
@@ -1238,15 +1463,14 @@ export const lecturerAPI = {
       .from('quizzes')
       .select(`
         id,
-        courses(lecturer_id)
+        courses!inner(lecturer_id)
       `)
       .eq('id', questionData.quiz_id)
+      .eq('courses.lecturer_id', lecturerId)
       .single();
 
-    if (!quiz) throw new Error('Quiz not found');
-    if (quiz.courses?.lecturer_id !== lecturerId) {
-      throw new Error('Unauthorized: You can only add questions to your quizzes');
-    }
+    if (!quiz) throw new Error('Quiz not found or access denied');
+
 
     const { data, error } = await supabase
       .from('quiz_questions')
@@ -1280,15 +1504,13 @@ export const lecturerAPI = {
       .select(`
         id,
         quiz_id,
-        quizzes(courses(lecturer_id))
+        quizzes!inner(courses!inner(lecturer_id))
       `)
       .eq('id', questionId)
+      .eq('quizzes.courses.lecturer_id', lecturerId)
       .single();
 
-    if (!question) throw new Error('Question not found');
-    if (question.quizzes?.courses?.lecturer_id !== lecturerId) {
-      throw new Error('Unauthorized: You can only update questions in your quizzes');
-    }
+    if (!question) throw new Error('Question not found or access denied');
 
     const { data, error } = await supabase
       .from('quiz_questions')
@@ -1315,15 +1537,13 @@ export const lecturerAPI = {
       .select(`
         id,
         quiz_id,
-        quizzes(courses(lecturer_id))
+        quizzes!inner(courses!inner(lecturer_id))
       `)
       .eq('id', questionId)
+      .eq('quizzes.courses.lecturer_id', lecturerId)
       .single();
 
-    if (!question) throw new Error('Question not found');
-    if (question.quizzes?.courses?.lecturer_id !== lecturerId) {
-      throw new Error('Unauthorized: You can only delete questions from your quizzes');
-    }
+    if (!question) throw new Error('Question not found or access denied');
 
     const { error } = await supabase
       .from('quiz_questions')
@@ -1333,7 +1553,7 @@ export const lecturerAPI = {
     if (error) throw error;
 
     // Update quiz total marks
-    await this.updateQuizTotalMarks(question.quiz_id);
+    await this.updateQuizTotalMarks((question as any).quiz_id);
   },
 
   // Get Quiz Questions
@@ -1343,15 +1563,13 @@ export const lecturerAPI = {
       .from('quizzes')
       .select(`
         id,
-        courses(lecturer_id)
+        courses!inner(lecturer_id)
       `)
       .eq('id', quizId)
+      .eq('courses.lecturer_id', lecturerId)
       .single();
 
-    if (!quiz) throw new Error('Quiz not found');
-    if (quiz.courses?.lecturer_id !== lecturerId) {
-      throw new Error('Unauthorized: You can only view questions from your quizzes');
-    }
+    if (!quiz) throw new Error('Quiz not found or access denied');
 
     const { data, error } = await supabase
       .from('quiz_questions')
@@ -1676,7 +1894,7 @@ export const studentAPI = {
 
           // Check if arrays are equal
           if (studentAnswers.length === correctAnswers.length &&
-              studentAnswers.every((answer, index) => answer === correctAnswers[index])) {
+              studentAnswers.every((answer: string, index: number) => answer === correctAnswers[index])) {
             totalScore += parseFloat(question.marks);
           }
         } else {
@@ -1749,6 +1967,73 @@ export const studentAPI = {
       .eq('is_active', true)
       .gte('due_date', new Date().toISOString())
       .order('due_date', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Submit Assignment
+  async submitAssignment(submissionData: {
+    assignment_id: string;
+    student_id: string;
+    submission_text?: string;
+    file_path?: string;
+  }) {
+    // Check if student is enrolled in the course
+    const { data: assignment } = await supabase
+      .from('assignments')
+      .select(`
+        id,
+        course_id,
+        due_date,
+        courses(course_code, course_name)
+      `)
+      .eq('id', submissionData.assignment_id)
+      .eq('is_active', true)
+      .single();
+
+    if (!assignment) throw new Error('Assignment not found or not active');
+
+    // Check if due date has passed
+    if (new Date() > new Date(assignment.due_date)) {
+      throw new Error('Assignment submission deadline has passed');
+    }
+
+    // Check if student is enrolled in the course
+    const { data: enrollment } = await supabase
+      .from('course_enrollments')
+      .select('id')
+      .eq('student_id', submissionData.student_id)
+      .eq('course_id', assignment.course_id)
+      .eq('status', 'enrolled')
+      .single();
+
+    if (!enrollment) throw new Error('You are not enrolled in this course');
+
+    // Check if student has already submitted
+    const { data: existingSubmission } = await supabase
+      .from('assignment_submissions')
+      .select('id')
+      .eq('assignment_id', submissionData.assignment_id)
+      .eq('student_id', submissionData.student_id)
+      .single();
+
+    if (existingSubmission) {
+      throw new Error('You have already submitted this assignment');
+    }
+
+    const { data, error } = await supabase
+      .from('assignment_submissions')
+      .insert([{
+        ...submissionData,
+        submitted_at: new Date().toISOString(),
+        status: 'submitted'
+      }])
+      .select(`
+        *,
+        assignments(title, max_score, courses(course_code, course_name))
+      `)
+      .single();
 
     if (error) throw error;
     return data;
@@ -1836,6 +2121,183 @@ export const studentAPI = {
 
     if (error) throw error;
     return data;
+  }
+};
+
+// Accountant API functions
+export const accountantAPI = {
+  // Get all students for financial management
+  async getAllStudents() {
+    console.log('Fetching students for accountant...');
+
+    const { data, error } = await supabase
+      .rpc('accountant_get_all_students');
+
+    if (error) {
+      console.error('Error fetching students:', error);
+      throw error;
+    }
+
+    console.log('Students fetched successfully:', data?.length || 0);
+    return data;
+  },
+
+  // Create financial record
+  async createFinancialRecord(recordData: {
+    student_id: string;
+    academic_year: string;
+    semester: number;
+    tuition_fee: number;
+    accommodation_fee?: number;
+    other_fees?: number;
+    due_date: string;
+  }) {
+    console.log('Creating financial record:', recordData);
+
+    const { data, error } = await supabase
+      .rpc('accountant_create_financial_record', {
+        p_student_id: recordData.student_id,
+        p_academic_year: recordData.academic_year,
+        p_semester: recordData.semester,
+        p_tuition_fee: recordData.tuition_fee,
+        p_accommodation_fee: recordData.accommodation_fee || 0,
+        p_other_fees: recordData.other_fees || 0,
+        p_due_date: recordData.due_date
+      });
+
+    if (error) {
+      console.error('Error creating financial record:', error);
+      throw error;
+    }
+
+    console.log('Financial record created successfully:', data);
+    return data;
+  },
+
+  // Record payment
+  async recordPayment(paymentData: {
+    student_id: string;
+    amount: number;
+    payment_method?: string;
+    reference_number?: string;
+    payment_date: string;
+    processed_by: string;
+    notes?: string;
+  }) {
+    console.log('Recording payment:', paymentData);
+
+    const { data, error } = await supabase
+      .rpc('accountant_record_payment', {
+        p_student_id: paymentData.student_id,
+        p_amount: paymentData.amount,
+        p_payment_method: paymentData.payment_method || 'cash',
+        p_reference_number: paymentData.reference_number || null,
+        p_payment_date: paymentData.payment_date,
+        p_processed_by: paymentData.processed_by,
+        p_notes: paymentData.notes || null
+      });
+
+    if (error) {
+      console.error('Error recording payment:', error);
+      throw error;
+    }
+
+    console.log('Payment recorded successfully:', data);
+    return data;
+  },
+
+  // Get financial records for a student
+  async getStudentFinancialRecords(studentId: string) {
+    const { data, error } = await supabase
+      .from('financial_records')
+      .select(`
+        *,
+        students(student_id, first_name, last_name)
+      `)
+      .eq('student_id', studentId)
+      .order('academic_year', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get all financial records (for ledger view)
+  async getAllFinancialRecords() {
+    const { data, error } = await supabase
+      .rpc('accountant_get_all_financial_records');
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Get all payments (for transaction history)
+  async getAllPayments() {
+    const { data, error } = await supabase
+      .rpc('accountant_get_all_payments');
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Create invoice
+  async createInvoice(invoiceData: {
+    student_id: string;
+    invoice_number: string;
+    description: string;
+    amount: number;
+    due_date?: string;
+    created_by: string;
+  }) {
+    const { data, error } = await supabase
+      .from('invoices')
+      .insert([{
+        ...invoiceData,
+        status: 'pending'
+      }])
+      .select(`
+        *,
+        students(student_id, first_name, last_name)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get student financial summary
+  async getStudentFinancialSummary(studentId: string) {
+    // Get financial records
+    const { data: records } = await supabase
+      .from('financial_records')
+      .select('*')
+      .eq('student_id', studentId);
+
+    // Get payments
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('student_id', studentId);
+
+    // Get invoices
+    const { data: invoices } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('student_id', studentId);
+
+    const totalOwed = records?.reduce((sum, record) => sum + record.total_amount, 0) || 0;
+    const totalPaid = payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+    const totalBalance = totalOwed - totalPaid;
+
+    return {
+      records: records || [],
+      payments: payments || [],
+      invoices: invoices || [],
+      summary: {
+        totalOwed,
+        totalPaid,
+        totalBalance
+      }
+    };
   }
 };
 

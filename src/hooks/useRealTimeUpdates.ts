@@ -137,7 +137,37 @@ export const useStudentRealTimeUpdates = (studentId: string, onUpdate: () => voi
       )
       .subscribe();
 
-    subscriptions.push(caChannel, examChannel, quizChannel, assignmentChannel, enrollmentChannel, invoiceChannel);
+    // Subscribe to financial records
+    const financialChannel = supabase
+      .channel('financial_records_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'financial_records',
+          filter: `student_id=eq.${studentId}`
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to payments
+    const paymentsChannel = supabase
+      .channel('payments_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payments',
+          filter: `student_id=eq.${studentId}`
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    subscriptions.push(caChannel, examChannel, quizChannel, assignmentChannel, enrollmentChannel, invoiceChannel, financialChannel, paymentsChannel);
 
     return () => {
       subscriptions.forEach(subscription => {
@@ -145,6 +175,63 @@ export const useStudentRealTimeUpdates = (studentId: string, onUpdate: () => voi
       });
     };
   }, [studentId, onUpdate]);
+}
+
+// Hook for accountant real-time updates
+export function useAccountantRealTimeUpdates(onUpdate: () => void) {
+  useEffect(() => {
+    const subscriptions: any[] = [];
+
+    // Subscribe to all financial records changes
+    const financialChannel = supabase
+      .channel('accountant_financial_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'financial_records'
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to all payments changes
+    const paymentsChannel = supabase
+      .channel('accountant_payments_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payments'
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    // Subscribe to all invoices changes
+    const invoicesChannel = supabase
+      .channel('accountant_invoices_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoices'
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    subscriptions.push(financialChannel, paymentsChannel, invoicesChannel);
+
+    return () => {
+      subscriptions.forEach(subscription => {
+        supabase.removeChannel(subscription);
+      });
+    };
+  }, [onUpdate]);
 };
 
 export const useAdminRealTimeUpdates = (onUpdate: () => void) => {

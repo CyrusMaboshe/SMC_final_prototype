@@ -3,9 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, StudentProfile, supabase, studentAPI } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { AuthLoadingOverlay } from '@/components/AuthLoadingSpinner';
 import QRCode from 'qrcode';
 import StudentQuizInterface from '@/components/StudentQuizInterface';
 import StudentQuizResults from '@/components/StudentQuizResults';
+import StudentAssignmentSubmission from '@/components/StudentAssignmentSubmission';
+import StudentAssignmentResults from '@/components/StudentAssignmentResults';
+import StudentInvoices from '@/components/StudentInvoices';
 
 const ChangePasswordForm = ({ user }: { user: any }) => {
   const [formData, setFormData] = useState({
@@ -1197,57 +1202,21 @@ const EnrolledCoursesTab = ({ studentId }: { studentId?: string }) => {
 };
 
 const StudentDashboard = () => {
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<StudentProfile | null>(null);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('personal-info');
   const router = useRouter();
+  const { user, profile, authState, logout } = useAuth();
 
+  // Redirect if not authenticated or not a student
   useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const currentUser = authAPI.getCurrentUser();
-      if (!currentUser || currentUser.role !== 'student') {
-        router.push('/');
-        return;
-      }
-      setUser(currentUser);
-
-      // Fetch fresh student profile from database
-      await fetchStudentProfile(currentUser.id);
-    } catch (error) {
+    if (authState === 'authenticated' && (!user || user.role !== 'student')) {
       router.push('/');
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [authState, user, router]);
 
-  const fetchStudentProfile = async (userId: string) => {
-    try {
-      console.log('Fetching student profile for user ID:', userId);
-      const { data, error } = await supabase
-        .rpc('get_student_profile', { p_user_id: userId });
 
-      console.log('Student profile response:', { data, error });
-
-      if (error) throw error;
-      if (data) {
-        console.log('Setting profile data:', data);
-        setProfile(data);
-        // Update localStorage with fresh data
-        localStorage.setItem('user_profile', JSON.stringify(data));
-      }
-    } catch (error) {
-      console.error('Failed to fetch student profile:', error);
-    }
-  };
 
   const handleLogout = () => {
-    authAPI.logout();
-    router.push('/');
+    logout();
   };
 
   const tabs = [
@@ -1335,32 +1304,10 @@ const StudentDashboard = () => {
         return <StudentQuizInterface studentId={profile?.id} />;
 
       case 'submit-assignments':
-        return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Submit Assignments</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">📝</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Assignments Available</h3>
-              <p className="text-gray-600">Assignment submissions will be available here when assignments are published.</p>
-            </div>
-          </div>
-        );
+        return <StudentAssignmentSubmission studentId={profile?.id} />;
 
       case 'assignment-results':
-        return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Assignment Results</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">📄</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Assignment Results Available</h3>
-              <p className="text-gray-600">Your assignment results and feedback will appear here once graded.</p>
-            </div>
-          </div>
-        );
+        return <StudentAssignmentResults studentId={profile?.id} />;
 
       case 'exam-slips':
         return <ExamSlipsTab studentId={profile?.id} />;
@@ -1386,18 +1333,7 @@ const StudentDashboard = () => {
         return <ChangePasswordForm user={user} />;
 
       case 'invoices':
-        return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Invoices</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">💰</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Invoices Available</h3>
-              <p className="text-gray-600">Your invoices and billing information will appear here.</p>
-            </div>
-          </div>
-        );
+        return <StudentInvoices studentId={profile?.id} />;
 
       case 'financial-statements':
         return (
@@ -1418,12 +1354,16 @@ const StudentDashboard = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-      </div>
-    );
+
+
+  // Show loading state while checking authentication
+  if (authState === 'loading' || authState === 'idle') {
+    return <AuthLoadingOverlay message="Loading your dashboard..." subMessage="Please wait while we prepare your student portal" />;
+  }
+
+  // Redirect if not authenticated
+  if (authState !== 'authenticated' || !user || user.role !== 'student') {
+    return <AuthLoadingOverlay message="Redirecting..." subMessage="Taking you back to the login page" />;
   }
 
   return (
