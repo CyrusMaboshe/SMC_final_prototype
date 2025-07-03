@@ -25,7 +25,7 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
     semester: 1,
     academic_year: '2024-2025'
   });
-  const [editingResult, setEditingResult] = useState<any>(null);
+  // Removed editingResult state - lecturers can only add new results
   const [selectedSemester, setSelectedSemester] = useState(1);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
 
@@ -108,27 +108,19 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
         return;
       }
 
-      if (editingResult) {
-        await lecturerAPI.updateCAResult(editingResult.id, {
-          assessment_name: formData.assessment_name,
-          score: score,
-          max_score: maxScore,
-          assessment_date: formData.assessment_date
-        }, profile.id);
-      } else {
-        const caResultData = {
-          student_id: selectedStudent,
-          course_id: selectedCourse,
-          assessment_name: formData.assessment_name.trim(),
-          score: score,
-          max_score: maxScore,
-          assessment_date: formData.assessment_date,
-          semester: formData.semester,
-          academic_year: formData.academic_year,
-          created_by: profile.id
-        };
-        await lecturerAPI.createCAResult(caResultData);
-      }
+      // Only allow creating new results, not editing existing ones
+      const caResultData = {
+        student_id: selectedStudent,
+        course_id: selectedCourse,
+        assessment_name: formData.assessment_name.trim(),
+        score: score,
+        max_score: maxScore,
+        assessment_date: formData.assessment_date,
+        semester: formData.semester,
+        academic_year: formData.academic_year,
+        created_by: profile.id
+      };
+      await lecturerAPI.createCAResult(caResultData);
 
       // Reset form
       setFormData({
@@ -142,45 +134,19 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
       setSelectedCourse('');
       setSelectedStudent('');
       setShowAddForm(false);
-      setEditingResult(null);
 
       // Reload results
       await loadCAResults();
 
-      alert(editingResult ? 'CA result updated successfully!' : 'CA result added successfully!');
+      alert('CA result added successfully!');
     } catch (error) {
       console.error('Error saving CA result:', error);
       alert(`Error saving CA result: ${error.message || 'Please try again.'}`);
     }
   };
 
-  const handleEdit = (result: any) => {
-    setEditingResult(result);
-    setSelectedCourse(result.course_id);
-    setSelectedStudent(result.student_id);
-    setFormData({
-      assessment_name: result.assessment_name,
-      score: result.score.toString(),
-      max_score: result.max_score.toString(),
-      assessment_date: result.assessment_date,
-      semester: result.semester || 1,
-      academic_year: result.academic_year || '2024-2025'
-    });
-    setShowAddForm(true);
-  };
-
-  const handleDelete = async (resultId: string) => {
-    if (confirm('Are you sure you want to delete this CA result?')) {
-      try {
-        await lecturerAPI.deleteCAResult(resultId);
-        await loadCAResults();
-        alert('CA result deleted successfully!');
-      } catch (error) {
-        console.error('Error deleting CA result:', error);
-        alert('Error deleting CA result. Please try again.');
-      }
-    }
-  };
+  // Edit and delete functionality removed for security
+  // Lecturers can only add new results, not modify existing ones
 
   const getStatusBadge = (percentage: number) => {
     if (percentage >= 50) {
@@ -208,7 +174,6 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
         <button
           onClick={() => {
             setShowAddForm(true);
-            setEditingResult(null);
             setFormData({
               assessment_name: '',
               score: '',
@@ -469,9 +434,6 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -505,20 +467,6 @@ const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {new Date(result.assessment_date).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      <button
-                        onClick={() => handleEdit(result)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(result.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
                     </td>
                   </tr>
                 ))}
@@ -559,7 +507,7 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
     status: '',
     comments: ''
   });
-  const [editingResult, setEditingResult] = useState<any>(null);
+  // Removed editingResult state - lecturers can only add new results
 
   useEffect(() => {
     if (profile?.id) {
@@ -655,44 +603,22 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
         profileId: profile.id
       });
 
-      if (editingResult) {
-        console.log('Updating final result:', editingResult.id);
-        await lecturerAPI.updateFinalResult(editingResult.id, {
-          final_score: score,
-          final_grade: formData.final_grade || grade,
-          gpa_points: parseFloat(formData.gpa_points) || gpa,
-          status: formData.status || status,
-          comments: formData.comments
-        });
-      } else {
-        console.log('Creating new final result');
-        const resultData = {
-          student_id: selectedStudent,
-          course_id: selectedCourse,
-          academic_year: formData.academic_year,
-          semester: formData.semester,
-          final_score: score,
-          final_grade: formData.final_grade || grade,
-          gpa_points: parseFloat(formData.gpa_points) || gpa,
-          status: formData.status || status,
-          submitted_by: profile.id,
-          comments: formData.comments
-        };
-        console.log('Final result data to be created:', resultData);
-        console.log('Data types check:', {
-          student_id: typeof resultData.student_id,
-          course_id: typeof resultData.course_id,
-          academic_year: typeof resultData.academic_year,
-          semester: typeof resultData.semester,
-          final_score: typeof resultData.final_score,
-          final_grade: typeof resultData.final_grade,
-          gpa_points: typeof resultData.gpa_points,
-          status: typeof resultData.status,
-          submitted_by: typeof resultData.submitted_by,
-          comments: typeof resultData.comments
-        });
-        await lecturerAPI.createFinalResult(resultData);
-      }
+      // Only allow creating new results, not editing existing ones
+      console.log('Creating new final result');
+      const resultData = {
+        student_id: selectedStudent,
+        course_id: selectedCourse,
+        academic_year: formData.academic_year,
+        semester: formData.semester,
+        final_score: score,
+        final_grade: formData.final_grade || grade,
+        gpa_points: parseFloat(formData.gpa_points) || gpa,
+        status: formData.status || status,
+        submitted_by: profile.id,
+        comments: formData.comments
+      };
+      console.log('Final result data to be created:', resultData);
+      await lecturerAPI.createFinalResult(resultData);
 
       // Reset form
       setFormData({
@@ -707,12 +633,10 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
       setSelectedCourse('');
       setSelectedStudent('');
       setShowAddForm(false);
-      setEditingResult(null);
-
       // Reload results
       await loadFinalResults();
 
-      alert(editingResult ? 'Final result updated successfully!' : 'Final result added successfully!');
+      alert('Final result added successfully!');
     } catch (error) {
       console.error('Error saving final result:', error);
       console.error('Error details:', error.message);
@@ -731,34 +655,8 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
     }
   };
 
-  const handleEdit = (result: any) => {
-    setEditingResult(result);
-    setSelectedCourse(result.course_id);
-    setSelectedStudent(result.student_id);
-    setFormData({
-      academic_year: result.academic_year,
-      semester: result.semester,
-      final_score: result.final_score.toString(),
-      final_grade: result.final_grade,
-      gpa_points: result.gpa_points.toString(),
-      status: result.status,
-      comments: result.comments || ''
-    });
-    setShowAddForm(true);
-  };
-
-  const handleDelete = async (resultId: string) => {
-    if (confirm('Are you sure you want to delete this final result?')) {
-      try {
-        await lecturerAPI.deleteFinalResult(resultId);
-        await loadFinalResults();
-        alert('Final result deleted successfully!');
-      } catch (error) {
-        console.error('Error deleting final result:', error);
-        alert('Error deleting final result. Please try again.');
-      }
-    }
-  };
+  // Edit and delete functionality removed for security
+  // Lecturers can only add new results, not modify existing ones
 
   const getStatusBadge = (status: string) => {
     if (status === 'Pass') {
@@ -807,7 +705,6 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
           <button
             onClick={() => {
               setShowAddForm(true);
-              setEditingResult(null);
               setFormData({
                 academic_year: '2024-2025',
                 semester: 1,
@@ -862,7 +759,7 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
       {showAddForm && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            {editingResult ? 'Edit Final Result' : 'Add New Final Result'}
+            Add New Final Result
           </h3>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1026,10 +923,7 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
             <div className="flex justify-end space-x-3">
               <button
                 type="button"
-                onClick={() => {
-                  setShowAddForm(false);
-                  setEditingResult(null);
-                }}
+                onClick={() => setShowAddForm(false)}
                 className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
               >
                 Cancel
@@ -1038,7 +932,7 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
                 type="submit"
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
               >
-                {editingResult ? 'Update Result' : 'Add Result'}
+                Add Result
               </button>
             </div>
           </form>
@@ -1081,9 +975,6 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -1112,20 +1003,6 @@ const FinalResultsManager = ({ profile, courses }: { profile: any, courses: any[
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(result.status)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      <button
-                        onClick={() => handleEdit(result)}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(result.id)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Delete
-                      </button>
                     </td>
                   </tr>
                 ))}

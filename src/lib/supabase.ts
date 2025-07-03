@@ -965,54 +965,8 @@ export const lecturerAPI = {
     return data?.filter((result: any) => result.courses?.lecturer_id === lecturerId) || [];
   },
 
-  async updateCAResult(resultId: string, updates: {
-    score?: number;
-    max_score?: number;
-    assessment_name?: string;
-    assessment_date?: string;
-  }, lecturerId?: string) {
-    // If lecturerId is provided, verify access
-    if (lecturerId) {
-      const { data: existingResult } = await supabase
-        .from('ca_results')
-        .select('course_id, courses(lecturer_id)')
-        .eq('id', resultId)
-        .single();
-
-      if (!existingResult || (existingResult.courses as any)?.lecturer_id !== lecturerId) {
-        throw new Error('Access denied: You can only update results for your assigned courses');
-      }
-    }
-
-    let updateData: any = { ...updates };
-
-    if (updates.score !== undefined && updates.max_score !== undefined) {
-      updateData.percentage = (updates.score / updates.max_score) * 100;
-    }
-
-    const { data, error } = await supabase
-      .from('ca_results')
-      .update(updateData)
-      .eq('id', resultId)
-      .select(`
-        *,
-        students(student_id, first_name, last_name),
-        courses(course_code, course_name)
-      `)
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
-  async deleteCAResult(resultId: string) {
-    const { error } = await supabase
-      .from('ca_results')
-      .delete()
-      .eq('id', resultId);
-
-    if (error) throw error;
-  },
+  // updateCAResult and deleteCAResult functions removed for security
+  // Lecturers can only create new results, not modify existing ones
 
   // Final Results Management
   async createFinalResult(resultData: {
@@ -1107,36 +1061,8 @@ export const lecturerAPI = {
     return data?.filter((result: any) => result.courses?.lecturer_id === lecturerId) || [];
   },
 
-  async updateFinalResult(resultId: string, updates: {
-    final_score?: number;
-    final_grade?: string;
-    gpa_points?: number;
-    status?: string;
-    comments?: string;
-  }) {
-    const { data, error } = await supabase
-      .from('final_results')
-      .update(updates)
-      .eq('id', resultId)
-      .select(`
-        *,
-        students(student_id, first_name, last_name, program),
-        courses(course_code, course_name)
-      `)
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
-  async deleteFinalResult(resultId: string) {
-    const { error } = await supabase
-      .from('final_results')
-      .delete()
-      .eq('id', resultId);
-
-    if (error) throw error;
-  },
+  // updateFinalResult and deleteFinalResult functions removed for security
+  // Lecturers can only create new results, not modify existing ones
 
   // Verify lecturer has access to course
   async verifyLecturerCourseAccess(lecturerId: string, courseId: string) {
