@@ -504,27 +504,7 @@ export const updatesAPI = {
     return data;
   },
 
-  // Test function to check if updates table exists and its structure
-  async testTableAccess() {
-    try {
-      console.log('Testing updates table access...');
-      const { data, error } = await supabase
-        .from('updates')
-        .select('*')
-        .limit(1);
 
-      if (error) {
-        console.error('Table access error:', error);
-        return { success: false, error: error.message };
-      }
-
-      console.log('Table access successful, sample data:', data);
-      return { success: true, data };
-    } catch (err) {
-      console.error('Table test failed:', err);
-      return { success: false, error: err };
-    }
-  },
 
   // Get updates by status for admin
   async getByStatus(isPublished: boolean) {

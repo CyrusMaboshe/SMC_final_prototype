@@ -100,19 +100,7 @@ const UpdatesManagement = () => {
     }
   };
 
-  const testTableAccess = async () => {
-    try {
-      const result = await updatesAPI.testTableAccess();
-      console.log('Table test result:', result);
-      if (result.success) {
-        setSuccess('Table access test successful!');
-      } else {
-        setError(`Table access test failed: ${result.error}`);
-      }
-    } catch (err: any) {
-      setError(`Table test error: ${err.message}`);
-    }
-  };
+
 
   const applyFilters = () => {
     let filtered = [...updates];
@@ -474,20 +462,12 @@ const UpdatesManagement = () => {
                   ? 'No updates match your current filters.'
                   : 'Get started by creating your first update.'}
               </p>
-              <div className="space-x-2">
-                <button
-                  onClick={() => setShowCreateForm(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                >
-                  Create Update
-                </button>
-                <button
-                  onClick={testTableAccess}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                >
-                  Test Table
-                </button>
-              </div>
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+              >
+                Create Update
+              </button>
             </div>
           ) : (
             <div className="overflow-x-auto">
