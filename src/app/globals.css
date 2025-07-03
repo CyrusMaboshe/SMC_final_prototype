@@ -97,3 +97,56 @@ a:focus {
     transform: translateX(0);
   }
 }
+
+/* Print optimizations for clean results printing */
+@media print {
+  /* Hide all navigation and dashboard elements */
+  header, nav, .sidebar, button, .print\:hidden {
+    display: none !important;
+  }
+
+  /* Reset page layout */
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* Ensure content takes full width */
+  .max-w-7xl, .max-w-6xl, .max-w-5xl {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Remove shadows and borders for clean print */
+  .shadow-sm, .shadow-md, .shadow-lg {
+    box-shadow: none !important;
+  }
+
+  .border, .border-gray-200, .border-gray-300 {
+    border: none !important;
+  }
+
+  .rounded-lg, .rounded-md {
+    border-radius: 0 !important;
+  }
+
+  /* Optimize tables for print */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: avoid;
+  }
+
+  /* Ensure proper spacing */
+  .p-6, .p-4, .p-8, .px-4, .py-8 {
+    padding: 0 !important;
+  }
+
+  /* Page break settings */
+  @page {
+    size: A4;
+    margin: 0.5in;
+  }
+}

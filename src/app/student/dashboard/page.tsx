@@ -257,16 +257,46 @@ const CAResultsTab = ({ studentId }: { studentId?: string }) => {
     <>
       <style jsx global>{`
         @media print {
+          /* Hide all dashboard elements */
           .print\\:hidden { display: none !important; }
+          header { display: none !important; }
+          nav { display: none !important; }
+          .sidebar { display: none !important; }
+
+          /* Hide dashboard navigation and controls */
+          .lg\\:w-64 { display: none !important; }
+          .flex.flex-col.lg\\:flex-row { display: block !important; }
+          .max-w-7xl { max-width: none !important; margin: 0 !important; padding: 0 !important; }
+
+          /* Reset page layout for print */
+          body { margin: 0 !important; padding: 0 !important; }
           .space-y-6 > * + * { margin-top: 1rem !important; }
-          .shadow-md { box-shadow: none !important; }
+          .shadow-md, .shadow-sm { box-shadow: none !important; }
           .rounded-lg { border-radius: 0 !important; }
+          .border { border: none !important; }
+
+          /* Optimize tables for print */
           table {
             page-break-inside: avoid;
             border-collapse: collapse;
-            width: 100%;
+            width: 100% !important;
+            margin: 0 !important;
           }
+
+          /* Ensure content takes full width */
+          .flex-1 { width: 100% !important; margin: 0 !important; padding: 0 !important; }
+          .bg-white { background: white !important; }
+          .p-6, .p-4, .p-8 { padding: 0 !important; }
+
+          /* Hide any buttons or interactive elements */
+          button { display: none !important; }
           .grid { page-break-inside: avoid; }
+
+          /* Print-specific styling */
+          @page {
+            size: A4;
+            margin: 0.5in;
+          }
         }
       `}</style>
       <div className="space-y-6">
@@ -609,16 +639,46 @@ const ExamResultsTab = ({ studentId }: { studentId?: string }) => {
     <>
       <style jsx global>{`
         @media print {
+          /* Hide all dashboard elements */
           .print\\:hidden { display: none !important; }
+          header { display: none !important; }
+          nav { display: none !important; }
+          .sidebar { display: none !important; }
+
+          /* Hide dashboard navigation and controls */
+          .lg\\:w-64 { display: none !important; }
+          .flex.flex-col.lg\\:flex-row { display: block !important; }
+          .max-w-7xl { max-width: none !important; margin: 0 !important; padding: 0 !important; }
+
+          /* Reset page layout for print */
+          body { margin: 0 !important; padding: 0 !important; }
           .space-y-6 > * + * { margin-top: 1rem !important; }
-          .shadow-md { box-shadow: none !important; }
+          .shadow-md, .shadow-sm { box-shadow: none !important; }
           .rounded-lg { border-radius: 0 !important; }
+          .border { border: none !important; }
+
+          /* Optimize tables for print */
           table {
             page-break-inside: avoid;
             border-collapse: collapse;
-            width: 100%;
+            width: 100% !important;
+            margin: 0 !important;
           }
+
+          /* Ensure content takes full width */
+          .flex-1 { width: 100% !important; margin: 0 !important; padding: 0 !important; }
+          .bg-white { background: white !important; }
+          .p-6, .p-4, .p-8 { padding: 0 !important; }
+
+          /* Hide any buttons or interactive elements */
+          button { display: none !important; }
           .grid { page-break-inside: avoid; }
+
+          /* Print-specific styling */
+          @page {
+            size: A4;
+            margin: 0.5in;
+          }
         }
       `}</style>
       <div className="space-y-6">
@@ -872,15 +932,39 @@ const ExamSlipsTab = ({ studentId }: { studentId?: string }) => {
                         linear-gradient(-45deg, transparent 24%, rgba(0,0,0,0.02) 25%, rgba(0,0,0,0.02) 26%, transparent 27%, transparent 74%, rgba(0,0,0,0.02) 75%, rgba(0,0,0,0.02) 76%, transparent 77%);
             background-size: 20px 20px;
           }
+
+          /* Hide all dashboard elements */
           .print\\:hidden { display: none !important; }
+          header { display: none !important; }
+          nav { display: none !important; }
+          .sidebar { display: none !important; }
+
+          /* Hide dashboard navigation and controls */
+          .lg\\:w-64 { display: none !important; }
+          .flex.flex-col.lg\\:flex-row { display: block !important; }
+          .max-w-7xl { max-width: none !important; margin: 0 !important; padding: 0 !important; }
+
+          /* Reset layout for print */
           .space-y-6 > * + * { margin-top: 1rem !important; }
-          .shadow-md { box-shadow: none !important; }
+          .shadow-md, .shadow-sm { box-shadow: none !important; }
           .rounded-lg { border-radius: 0 !important; }
+          .border { border: none !important; }
+
+          /* Optimize tables for print */
           table {
             page-break-inside: avoid;
             border-collapse: collapse;
-            width: 100%;
+            width: 100% !important;
+            margin: 0 !important;
           }
+
+          /* Ensure content takes full width */
+          .flex-1 { width: 100% !important; margin: 0 !important; padding: 0 !important; }
+          .bg-white { background: white !important; }
+          .p-6, .p-4, .p-8 { padding: 0 !important; }
+
+          /* Hide any buttons or interactive elements */
+          button { display: none !important; }
           .grid { page-break-inside: avoid; }
           .guillotine-pattern {
             position: relative;
@@ -1360,7 +1444,7 @@ const StudentDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="bg-white shadow-sm border-b border-gray-200 print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
@@ -1383,10 +1467,10 @@ const StudentDashboard = () => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col lg:flex-row gap-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:mx-0 print:px-0 print:py-0">
+        <div className="flex flex-col lg:flex-row gap-8 print:block print:gap-0">
           {/* Sidebar Navigation */}
-          <div className="lg:w-64 flex-shrink-0">
+          <div className="lg:w-64 flex-shrink-0 print:hidden">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
               <div className="p-4 border-b border-gray-200">
                 <h3 className="font-semibold text-gray-900">Dashboard Menu</h3>
@@ -1411,8 +1495,8 @@ const StudentDashboard = () => {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex-1 print:w-full print:m-0 print:p-0">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none print:rounded-none print:p-0">
               {renderTabContent()}
             </div>
           </div>
