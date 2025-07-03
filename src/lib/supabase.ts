@@ -138,6 +138,26 @@ export const authAPI = {
     };
   },
 
+  // Get current user UUID from database
+  async getCurrentUserUUID(): Promise<string | null> {
+    const username = localStorage.getItem('username');
+    if (!username) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('system_users')
+        .select('id')
+        .eq('username', username)
+        .single();
+
+      if (error) throw error;
+      return data?.id || null;
+    } catch (err) {
+      console.error('Error getting user UUID:', err);
+      return null;
+    }
+  },
+
   // Logout
   logout() {
     localStorage.removeItem('user_id');
@@ -415,14 +435,26 @@ export const updatesAPI = {
 
   // Create update (admin only)
   async create(updateData: Omit<Update, 'id' | 'created_at' | 'updated_at'>) {
+    const insertData = {
+      ...updateData,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.log('Attempting to insert update data:', insertData);
+
     const { data, error } = await supabase
       .from('updates')
-      .insert([updateData])
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
+      .insert([insertData])
+      .select();
+
+    if (error) {
+      console.error('Create update error:', error);
+      throw error;
+    }
+
+    console.log('Insert successful, data:', data);
+    return data && data.length > 0 ? data[0] : data;
   },
 
   // Update existing update (admin only)
@@ -470,6 +502,28 @@ export const updatesAPI = {
 
     if (error) throw error;
     return data;
+  },
+
+  // Test function to check if updates table exists and its structure
+  async testTableAccess() {
+    try {
+      console.log('Testing updates table access...');
+      const { data, error } = await supabase
+        .from('updates')
+        .select('*')
+        .limit(1);
+
+      if (error) {
+        console.error('Table access error:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log('Table access successful, sample data:', data);
+      return { success: true, data };
+    } catch (err) {
+      console.error('Table test failed:', err);
+      return { success: false, error: err };
+    }
   },
 
   // Get updates by status for admin

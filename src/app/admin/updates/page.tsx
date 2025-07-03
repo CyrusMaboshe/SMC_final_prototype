@@ -100,6 +100,20 @@ const UpdatesManagement = () => {
     }
   };
 
+  const testTableAccess = async () => {
+    try {
+      const result = await updatesAPI.testTableAccess();
+      console.log('Table test result:', result);
+      if (result.success) {
+        setSuccess('Table access test successful!');
+      } else {
+        setError(`Table access test failed: ${result.error}`);
+      }
+    } catch (err: any) {
+      setError(`Table test error: ${err.message}`);
+    }
+  };
+
   const applyFilters = () => {
     let filtered = [...updates];
 
@@ -122,12 +136,23 @@ const UpdatesManagement = () => {
     setSuccess('');
 
     try {
+      // Get the actual user UUID from database
+      const userUUID = await authAPI.getCurrentUserUUID();
+      if (!userUUID) {
+        setError('Unable to get user information. Please log in again.');
+        setIsSubmitting(false);
+        return;
+      }
+
       const updateData = {
         ...formData,
-        created_by: user.id,
+        created_by: userUUID,
         publish_date: formData.publish_date || null,
         expiry_date: formData.expiry_date || null
       };
+
+      console.log('Submitting update data:', updateData);
+      console.log('User UUID:', userUUID);
 
       if (editingUpdate) {
         await updatesAPI.update(editingUpdate.id, updateData);
@@ -141,6 +166,7 @@ const UpdatesManagement = () => {
       await fetchUpdates();
       await fetchStatistics();
     } catch (err: any) {
+      console.error('Error saving update:', err);
       setError(err.message || 'Failed to save update');
     } finally {
       setIsSubmitting(false);
@@ -448,12 +474,20 @@ const UpdatesManagement = () => {
                   ? 'No updates match your current filters.'
                   : 'Get started by creating your first update.'}
               </p>
-              <button
-                onClick={() => setShowCreateForm(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-              >
-                Create Update
-              </button>
+              <div className="space-x-2">
+                <button
+                  onClick={() => setShowCreateForm(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                  Create Update
+                </button>
+                <button
+                  onClick={testTableAccess}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                  Test Table
+                </button>
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
