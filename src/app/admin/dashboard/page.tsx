@@ -135,6 +135,14 @@ const AdminDashboard = () => {
             </button>
 
             <button
+              onClick={() => router.push('/admin/documents')}
+              className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-700 hover:bg-gray-100"
+            >
+              <span className="mr-3">📁</span>
+              Manage Documents
+            </button>
+
+            <button
               onClick={() => router.push('/admin/site-settings')}
               className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-700 hover:bg-gray-100"
             >

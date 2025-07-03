@@ -614,6 +614,122 @@ export const documentsAPI = {
       .rpc('increment_download_count', { document_id: id });
 
     if (error) throw error;
+  },
+
+  // Create document (admin only)
+  async create(documentData: Omit<Document, 'id' | 'created_at' | 'updated_at' | 'download_count'>) {
+    const insertData = {
+      ...documentData,
+      download_count: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.log('Attempting to insert document data:', insertData);
+
+    const { data, error } = await supabase
+      .from('documents')
+      .insert([insertData])
+      .select();
+
+    if (error) {
+      console.error('Create document error:', error);
+      throw error;
+    }
+
+    console.log('Insert successful, data:', data);
+    return data && data.length > 0 ? data[0] : data;
+  },
+
+  // Update existing document (admin only)
+  async update(id: string, documentData: Partial<Document>) {
+    const { data, error } = await supabase
+      .from('documents')
+      .update({
+        ...documentData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Delete document (admin only)
+  async delete(id: string) {
+    const { data, error } = await supabase
+      .from('documents')
+      .delete()
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Admin-specific functions
+  // Get all documents (including private) for admin management
+  async getAllForAdmin() {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Bulk publish/unpublish documents
+  async bulkUpdateStatus(ids: string[], isPublic: boolean) {
+    const { data, error } = await supabase
+      .from('documents')
+      .update({
+        is_public: isPublic,
+        updated_at: new Date().toISOString()
+      })
+      .in('id', ids)
+      .select();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Bulk delete documents
+  async bulkDelete(ids: string[]) {
+    const { data, error } = await supabase
+      .from('documents')
+      .delete()
+      .in('id', ids)
+      .select();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get documents statistics for admin dashboard
+  async getStatistics() {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('category, is_public, download_count');
+
+    if (error) throw error;
+
+    if (!data) return null;
+
+    const stats = {
+      total: data.length,
+      public: data.filter(doc => doc.is_public).length,
+      private: data.filter(doc => !doc.is_public).length,
+      totalDownloads: data.reduce((sum, doc) => sum + (doc.download_count || 0), 0),
+      byCategory: data.reduce((acc: any, doc) => {
+        acc[doc.category] = (acc[doc.category] || 0) + 1;
+        return acc;
+      }, {})
+    };
+
+    return stats;
   }
 };
 

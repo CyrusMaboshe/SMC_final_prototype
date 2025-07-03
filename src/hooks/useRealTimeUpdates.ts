@@ -392,12 +392,52 @@ export const useAdminRealTimeUpdates = (onUpdate: () => void) => {
       )
       .subscribe();
 
-    subscriptions.push(studentsChannel, lecturersChannel, coursesChannel, applicationsChannel, updatesChannel);
+    // Subscribe to documents table
+    const documentsChannel = supabase
+      .channel('documents_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'documents'
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    subscriptions.push(studentsChannel, lecturersChannel, coursesChannel, applicationsChannel, updatesChannel, documentsChannel);
 
     return () => {
       subscriptions.forEach(subscription => {
         supabase.removeChannel(subscription);
       });
+    };
+  }, [onUpdate]);
+};
+
+// Hook for documents real-time updates
+export const useDocumentsRealTimeUpdates = (onUpdate: () => void) => {
+  useEffect(() => {
+    const documentsChannel = supabase
+      .channel('public_documents_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'documents',
+          filter: 'is_public=eq.true'
+        },
+        (payload) => {
+          console.log('Documents real-time update:', payload);
+          onUpdate();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(documentsChannel);
     };
   }, [onUpdate]);
 };

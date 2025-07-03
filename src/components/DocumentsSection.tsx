@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { documentsAPI, Document } from '@/lib/supabase';
+import { useDocumentsRealTimeUpdates } from '@/hooks/useRealTimeUpdates';
 
 const DocumentsSection = () => {
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -10,18 +11,6 @@ const DocumentsSection = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    fetchDocuments();
-  }, []);
-
-  useEffect(() => {
-    if (selectedCategory === 'all') {
-      setFilteredDocuments(documents);
-    } else {
-      setFilteredDocuments(documents.filter(doc => doc.category === selectedCategory));
-    }
-  }, [selectedCategory, documents]);
 
   const fetchDocuments = async () => {
     try {
@@ -36,9 +25,43 @@ const DocumentsSection = () => {
     }
   };
 
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  // Set up real-time updates
+  useDocumentsRealTimeUpdates(fetchDocuments);
+
+  useEffect(() => {
+    if (selectedCategory === 'all') {
+      setFilteredDocuments(documents);
+    } else {
+      setFilteredDocuments(documents.filter(doc => doc.category === selectedCategory));
+    }
+  }, [selectedCategory, documents]);
+
+  const categories = [
+    { value: 'all', label: 'All Documents', icon: '📁' },
+    { value: 'academic_resources', label: 'Academic Resources', icon: '📚' },
+    { value: 'clinical_resources', label: 'Clinical Resources', icon: '🏥' },
+    { value: 'forms', label: 'Forms', icon: '📋' },
+    { value: 'handbooks', label: 'Handbooks', icon: '📖' },
+    { value: 'policies', label: 'Policies', icon: '📜' }
+  ];
+
   const getUniqueCategories = () => {
-    const categories = [...new Set(documents.map(doc => doc.category))];
-    return categories.sort();
+    const documentCategories = [...new Set(documents.map(doc => doc.category))];
+    return categories.filter(cat => cat.value !== 'all' && documentCategories.includes(cat.value));
+  };
+
+  const getCategoryIcon = (category: string) => {
+    const categoryData = categories.find(cat => cat.value === category);
+    return categoryData ? categoryData.icon : '📂';
+  };
+
+  const getCategoryLabel = (category: string) => {
+    const categoryData = categories.find(cat => cat.value === category);
+    return categoryData ? categoryData.label : category;
   };
 
   const handleDownload = async (document: Document) => {
@@ -85,13 +108,25 @@ const DocumentsSection = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const getFileIcon = (fileType: string) => {
-    if (fileType.includes('pdf')) return '📄';
-    if (fileType.includes('word') || fileType.includes('doc')) return '📝';
-    if (fileType.includes('excel') || fileType.includes('sheet')) return '📊';
-    if (fileType.includes('powerpoint') || fileType.includes('presentation')) return '📋';
-    if (fileType.includes('image')) return '🖼️';
-    return '📁';
+  const getFileIcon = (fileName: string) => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    switch (extension) {
+      case 'pdf': return '📄';
+      case 'doc':
+      case 'docx': return '📝';
+      case 'xls':
+      case 'xlsx': return '📊';
+      case 'ppt':
+      case 'pptx': return '📋';
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif': return '🖼️';
+      case 'txt': return '📃';
+      case 'zip':
+      case 'rar': return '🗜️';
+      default: return '📁';
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -162,15 +197,15 @@ const DocumentsSection = () => {
           </button>
           {getUniqueCategories().map((category) => (
             <button
-              key={category}
-              onClick={() => setSelectedCategory(category)}
+              key={category.value}
+              onClick={() => setSelectedCategory(category.value)}
               className={`px-4 py-2 rounded-full font-medium transition-all duration-300 transform hover:scale-105 ${
-                selectedCategory === category
+                selectedCategory === category.value
                   ? 'bg-blue-600 text-white shadow-lg'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-blue-50 hover:border-blue-300'
               }`}
             >
-              📂 {category}
+              {category.icon} {category.label}
             </button>
           ))}
         </div>
@@ -200,13 +235,13 @@ const DocumentsSection = () => {
             >
               <div className="p-6">
                 <div className="flex items-start mb-4">
-                  <span className="text-3xl mr-3">{getFileIcon(document.file_type)}</span>
+                  <span className="text-3xl mr-3">{getFileIcon(document.file_name)}</span>
                   <div className="flex-1">
                     <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-2">
                       {document.title}
                     </h3>
                     <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                      {document.category}
+                      {getCategoryIcon(document.category)} {getCategoryLabel(document.category)}
                     </span>
                   </div>
                 </div>
