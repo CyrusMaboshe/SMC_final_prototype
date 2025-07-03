@@ -26,7 +26,7 @@ export interface StudentProfile {
   last_name?: string;
   email?: string;
   phone?: string;
-  date_of_birth?: string;
+  date_of_birth?: string | null;
   address?: string;
   emergency_contact_name?: string;
   emergency_contact_phone?: string;
@@ -263,6 +263,9 @@ export interface Assignment {
   title: string;
   description?: string;
   instructions?: string;
+  file_path?: string;
+  file_name?: string;
+  file_size?: number;
   max_score: number;
   due_date: string;
   created_by: string;
@@ -492,7 +495,7 @@ export const adminAPI = {
     last_name?: string;
     email?: string;
     phone?: string;
-    date_of_birth?: string;
+    date_of_birth?: string | null;
     address?: string;
     emergency_contact_name?: string;
     emergency_contact_phone?: string;
@@ -513,7 +516,7 @@ export const adminAPI = {
     if (error) throw error;
 
     // Update additional student details if provided
-    if (studentData.phone || studentData.date_of_birth || studentData.address ||
+    if (studentData.phone || studentData.date_of_birth !== undefined || studentData.address ||
         studentData.emergency_contact_name || studentData.year_of_study || studentData.semester) {
       const { error: updateError } = await supabase
         .from('students')
@@ -742,7 +745,7 @@ export const adminAPI = {
     last_name?: string;
     email?: string;
     phone?: string;
-    date_of_birth?: string;
+    date_of_birth?: string | null;
     address?: string;
     emergency_contact_name?: string;
     emergency_contact_phone?: string;
@@ -1314,6 +1317,9 @@ export const lecturerAPI = {
     title: string;
     description?: string;
     instructions?: string;
+    file_path?: string;
+    file_name?: string;
+    file_size?: number;
     max_score: number;
     due_date: string;
     created_by: string;
@@ -1625,6 +1631,179 @@ export const lecturerAPI = {
 
     if (error) throw error;
     return data;
+  },
+
+  // Get Quiz Attempts (including in-progress) for Analytics
+  async getQuizAttempts(quizId: string, lecturerId: string) {
+    // Verify the quiz belongs to a course taught by this lecturer
+    const { data: quiz } = await supabase
+      .from('quizzes')
+      .select(`
+        id,
+        courses!inner(lecturer_id)
+      `)
+      .eq('id', quizId)
+      .eq('courses.lecturer_id', lecturerId)
+      .single();
+
+    if (!quiz) throw new Error('Quiz not found or access denied');
+
+    const { data, error } = await supabase
+      .from('quiz_attempts')
+      .select(`
+        *,
+        students(student_id, first_name, last_name, email)
+      `)
+      .eq('quiz_id', quizId)
+      .order('started_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Add student name for easier display
+    return data?.map(attempt => ({
+      ...attempt,
+      student_name: attempt.students
+        ? `${attempt.students.first_name} ${attempt.students.last_name}`.trim()
+        : 'Unknown Student'
+    })) || [];
+  },
+
+  // Update Quiz Analytics
+  async updateQuizAnalytics(quizId: string, lecturerId: string) {
+    // Verify access
+    const { data: quiz } = await supabase
+      .from('quizzes')
+      .select(`
+        id,
+        courses!inner(lecturer_id)
+      `)
+      .eq('id', quizId)
+      .eq('courses.lecturer_id', lecturerId)
+      .single();
+
+    if (!quiz) throw new Error('Quiz not found or access denied');
+
+    // Get all completed attempts
+    const { data: attempts } = await supabase
+      .from('quiz_attempts')
+      .select('*')
+      .eq('quiz_id', quizId)
+      .eq('status', 'completed');
+
+    // Get all questions
+    const { data: questions } = await supabase
+      .from('quiz_questions')
+      .select('*')
+      .eq('quiz_id', quizId);
+
+    if (!questions || !attempts) return;
+
+    // Calculate analytics for each question
+    for (const question of questions) {
+      const questionAttempts = attempts.filter(attempt =>
+        attempt.answers && attempt.answers[question.id]
+      );
+
+      let correctAnswers = 0;
+      const optionDistribution: Record<string, number> = {};
+
+      // Initialize option distribution
+      if (question.options) {
+        ['a', 'b', 'c', 'd'].forEach(option => {
+          optionDistribution[option] = 0;
+        });
+      }
+
+      // Count correct answers and option distribution
+      questionAttempts.forEach(attempt => {
+        const studentAnswer = attempt.answers[question.id];
+
+        // Count option selection
+        if (studentAnswer && optionDistribution.hasOwnProperty(studentAnswer)) {
+          optionDistribution[studentAnswer]++;
+        }
+
+        // Check if correct
+        if (studentAnswer === question.correct_answer) {
+          correctAnswers++;
+        }
+      });
+
+      // Update or insert analytics
+      await supabase
+        .from('quiz_analytics')
+        .upsert({
+          quiz_id: quizId,
+          question_id: question.id,
+          total_attempts: questionAttempts.length,
+          correct_answers: correctAnswers,
+          incorrect_answers: questionAttempts.length - correctAnswers,
+          option_distribution: optionDistribution,
+          difficulty_rating: questionAttempts.length > 0 ? (correctAnswers / questionAttempts.length) * 100 : 0,
+          last_updated: new Date().toISOString()
+        }, {
+          onConflict: 'quiz_id,question_id'
+        });
+    }
+  },
+
+  // Real-time Notification Functions
+
+  // Get Notifications for Lecturer
+  async getNotifications(lecturerId: string, limit: number = 50) {
+    const { data, error } = await supabase
+      .from('quiz_notifications')
+      .select(`
+        *,
+        quizzes(title, courses(course_name)),
+        students(first_name, last_name, student_id)
+      `)
+      .eq('lecturer_id', lecturerId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Mark Notification as Read
+  async markNotificationAsRead(notificationId: string, lecturerId: string) {
+    const { error } = await supabase
+      .from('quiz_notifications')
+      .update({ is_read: true })
+      .eq('id', notificationId)
+      .eq('lecturer_id', lecturerId);
+
+    if (error) throw error;
+  },
+
+  // Get Unread Notification Count
+  async getUnreadNotificationCount(lecturerId: string) {
+    const { count, error } = await supabase
+      .from('quiz_notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('lecturer_id', lecturerId)
+      .eq('is_read', false);
+
+    if (error) throw error;
+    return count || 0;
+  },
+
+  // Subscribe to Real-time Notifications
+  subscribeToNotifications(lecturerId: string, callback: (notification: any) => void) {
+    return supabase
+      .channel('quiz_notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'quiz_notifications',
+          filter: `lecturer_id=eq.${lecturerId}`
+        },
+        callback
+      )
+      .subscribe();
   }
 };
 
@@ -1856,8 +2035,26 @@ export const studentAPI = {
     if (error) throw error;
   },
 
-  // Submit Quiz Attempt
-  async submitQuizAttempt(attemptId: string) {
+  // Update Quiz Attempt (for auto-saving)
+  async updateQuizAttempt(attemptId: string, updates: {
+    answers?: Record<string, string>;
+    time_taken?: number;
+  }) {
+    const { error } = await supabase
+      .from('quiz_attempts')
+      .update(updates)
+      .eq('id', attemptId);
+
+    if (error) throw error;
+  },
+
+  // Submit Quiz Attempt with Enhanced Auto-Marking
+  async submitQuizAttempt(attemptId: string, finalAnswers?: Record<string, string>) {
+    // Update final answers if provided
+    if (finalAnswers) {
+      await this.updateQuizAttempt(attemptId, { answers: finalAnswers });
+    }
+
     // Get attempt with quiz and questions
     const { data: attempt } = await supabase
       .from('quiz_attempts')
@@ -1866,7 +2063,7 @@ export const studentAPI = {
         quizzes(
           id,
           total_marks,
-          quiz_questions(id, correct_answer, marks, question_type)
+          quiz_questions(id, correct_answer, marks, question_type, options)
         )
       `)
       .eq('id', attemptId)
@@ -1874,37 +2071,65 @@ export const studentAPI = {
 
     if (!attempt) throw new Error('Quiz attempt not found');
 
-    // Calculate score
+    // Enhanced auto-marking with detailed tracking
     let totalScore = 0;
     const questions = attempt.quizzes.quiz_questions;
-    const answers = attempt.answers || {};
+    const answers = finalAnswers || attempt.answers || {};
+    const detailedResults: any[] = [];
 
-    questions.forEach((question: any) => {
+    // Process each question with detailed marking
+    for (const question of questions) {
       const studentAnswer = answers[question.id];
+      let isCorrect = false;
+      let marksAwarded = 0;
+
       if (studentAnswer && question.correct_answer) {
         // For text questions, do case-insensitive comparison
         if (question.question_type === 'text') {
-          if (studentAnswer.toLowerCase().trim() === question.correct_answer.toLowerCase().trim()) {
-            totalScore += parseFloat(question.marks);
-          }
+          isCorrect = studentAnswer.toLowerCase().trim() === question.correct_answer.toLowerCase().trim();
         } else if (question.question_type === 'checkbox') {
           // For checkbox questions, compare sorted arrays
           const studentAnswers = studentAnswer.split('|').sort();
           const correctAnswers = question.correct_answer.split('|').sort();
-
-          // Check if arrays are equal
-          if (studentAnswers.length === correctAnswers.length &&
-              studentAnswers.every((answer: string, index: number) => answer === correctAnswers[index])) {
-            totalScore += parseFloat(question.marks);
-          }
+          isCorrect = studentAnswers.length === correctAnswers.length &&
+              studentAnswers.every((answer: string, index: number) => answer === correctAnswers[index]);
         } else {
-          // For multiple choice, exact match
-          if (studentAnswer === question.correct_answer) {
-            totalScore += parseFloat(question.marks);
-          }
+          // For multiple choice questions
+          isCorrect = studentAnswer === question.correct_answer;
+        }
+
+        if (isCorrect) {
+          marksAwarded = parseFloat(question.marks);
+          totalScore += marksAwarded;
         }
       }
-    });
+
+      // Store detailed result for analytics
+      detailedResults.push({
+        question_id: question.id,
+        student_answer: studentAnswer || null,
+        correct_answer: question.correct_answer,
+        is_correct: isCorrect,
+        marks_awarded: marksAwarded,
+        max_marks: parseFloat(question.marks)
+      });
+
+      // Save individual answer record
+      try {
+        await supabase
+          .from('student_answers')
+          .insert({
+            attempt_id: attemptId,
+            question_id: question.id,
+            selected_option: studentAnswer || null,
+            is_correct: isCorrect,
+            marks_awarded: marksAwarded,
+            answered_at: new Date().toISOString()
+          });
+      } catch (err) {
+        console.error('Error saving student answer:', err);
+      }
+    }
 
     const percentage = (totalScore / parseFloat(attempt.quizzes.total_marks)) * 100;
     const timeTaken = Math.floor((new Date().getTime() - new Date(attempt.started_at).getTime()) / 1000);
@@ -1922,11 +2147,138 @@ export const studentAPI = {
 
     if (error) throw error;
 
+    // Update quiz analytics after submission
+    try {
+      await this.updateQuizAnalyticsAfterSubmission(attempt.quiz_id, attemptId);
+    } catch (err) {
+      console.error('Error updating analytics:', err);
+    }
+
+    // Send notification to lecturer
+    try {
+      await this.sendQuizCompletionNotification(attempt.quiz_id, attempt.student_id, {
+        score: totalScore,
+        percentage: percentage,
+        time_taken: timeTaken
+      });
+    } catch (err) {
+      console.error('Error sending notification:', err);
+    }
+
     return {
       score: totalScore,
       percentage: percentage,
-      time_taken: timeTaken
+      time_taken: timeTaken,
+      detailed_results: detailedResults
     };
+  },
+
+  // Update Quiz Analytics After Submission
+  async updateQuizAnalyticsAfterSubmission(quizId: string, attemptId: string) {
+    // Get the attempt with answers
+    const { data: attempt } = await supabase
+      .from('quiz_attempts')
+      .select('answers, student_id')
+      .eq('id', attemptId)
+      .single();
+
+    if (!attempt) return;
+
+    // Get quiz questions
+    const { data: questions } = await supabase
+      .from('quiz_questions')
+      .select('*')
+      .eq('quiz_id', quizId);
+
+    if (!questions) return;
+
+    // Update analytics for each question
+    for (const question of questions) {
+      const studentAnswer = attempt.answers?.[question.id];
+
+      if (studentAnswer) {
+        // Get current analytics
+        const { data: analytics } = await supabase
+          .from('quiz_analytics')
+          .select('*')
+          .eq('quiz_id', quizId)
+          .eq('question_id', question.id)
+          .single();
+
+        const isCorrect = studentAnswer === question.correct_answer;
+        const currentDistribution = analytics?.option_distribution || {};
+
+        // Update option distribution
+        if (currentDistribution[studentAnswer] !== undefined) {
+          currentDistribution[studentAnswer] = (currentDistribution[studentAnswer] || 0) + 1;
+        }
+
+        // Update analytics
+        await supabase
+          .from('quiz_analytics')
+          .upsert({
+            quiz_id: quizId,
+            question_id: question.id,
+            total_attempts: (analytics?.total_attempts || 0) + 1,
+            correct_answers: (analytics?.correct_answers || 0) + (isCorrect ? 1 : 0),
+            incorrect_answers: (analytics?.incorrect_answers || 0) + (isCorrect ? 0 : 1),
+            option_distribution: currentDistribution,
+            difficulty_rating: 0, // Will be calculated later
+            last_updated: new Date().toISOString()
+          }, {
+            onConflict: 'quiz_id,question_id'
+          });
+      }
+    }
+  },
+
+  // Send Quiz Completion Notification
+  async sendQuizCompletionNotification(quizId: string, studentId: string, results: {
+    score: number;
+    percentage: number;
+    time_taken: number;
+  }) {
+    // Get quiz and lecturer info
+    const { data: quiz } = await supabase
+      .from('quizzes')
+      .select(`
+        title,
+        total_marks,
+        courses(lecturer_id, course_name)
+      `)
+      .eq('id', quizId)
+      .single();
+
+    if (!quiz) return;
+
+    // Get student info
+    const { data: student } = await supabase
+      .from('students')
+      .select('first_name, last_name, student_id')
+      .eq('id', studentId)
+      .single();
+
+    if (!student) return;
+
+    // Create notification for lecturer
+    await supabase
+      .from('quiz_notifications')
+      .insert({
+        quiz_id: quizId,
+        student_id: studentId,
+        lecturer_id: quiz.courses.lecturer_id,
+        notification_type: 'quiz_completed',
+        title: 'Quiz Completed',
+        message: `${student.first_name} ${student.last_name} (${student.student_id}) has completed "${quiz.title}"`,
+        metadata: {
+          score: results.score,
+          total_marks: quiz.total_marks,
+          percentage: results.percentage,
+          time_taken: results.time_taken,
+          course_name: quiz.courses.course_name
+        },
+        created_at: new Date().toISOString()
+      });
   },
 
   // Get Assignment Results for a student
@@ -2096,31 +2448,84 @@ export const studentAPI = {
     return data;
   },
 
-  // Get Invoices for a student
-  async getInvoices(studentId: string) {
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('student_id', studentId)
-      .order('created_at', { ascending: false });
 
-    if (error) throw error;
-    return data;
-  },
 
   // Get Payments for a student
   async getPayments(studentId: string) {
+    // First get the student UUID from the student number
+    const { data: student, error: studentError } = await supabase
+      .from('students')
+      .select('id')
+      .eq('student_id', studentId)
+      .single();
+
+    if (studentError) {
+      console.error('Error finding student:', studentError);
+      return [];
+    }
+
     const { data, error } = await supabase
       .from('payments')
-      .select(`
-        *,
-        invoices(invoice_number, description, amount)
-      `)
-      .eq('student_id', studentId)
+      .select('*')
+      .eq('student_id', student.id)
       .order('payment_date', { ascending: false });
 
     if (error) throw error;
-    return data;
+    return data || [];
+  },
+
+  // Get Financial Records for a student
+  async getFinancialRecords(studentId: string) {
+    // First get the student UUID from the student number
+    const { data: student, error: studentError } = await supabase
+      .from('students')
+      .select('id')
+      .eq('student_id', studentId)
+      .single();
+
+    if (studentError) {
+      console.error('Error finding student:', studentError);
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('financial_records')
+      .select('*')
+      .eq('student_id', student.id)
+      .order('academic_year', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+};
+
+// Logging helper function
+const logAccountantAction = async (
+  accountantId: string,
+  actionType: string,
+  entityType: string,
+  entityId?: string,
+  studentId?: string,
+  description?: string,
+  oldValues?: any,
+  newValues?: any
+) => {
+  try {
+    await supabase.rpc('log_accountant_action', {
+      p_accountant_id: accountantId,
+      p_action_type: actionType,
+      p_entity_type: entityType,
+      p_entity_id: entityId,
+      p_student_id: studentId,
+      p_description: description || '',
+      p_old_values: oldValues,
+      p_new_values: newValues,
+      p_ip_address: null, // Will be set by the client if needed
+      p_user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null
+    });
+  } catch (error) {
+    console.error('Failed to log accountant action:', error);
+    // Don't throw error to avoid breaking the main operation
   }
 };
 
@@ -2151,7 +2556,7 @@ export const accountantAPI = {
     accommodation_fee?: number;
     other_fees?: number;
     due_date: string;
-  }) {
+  }, accountantId?: string) {
     console.log('Creating financial record:', recordData);
 
     const { data, error } = await supabase
@@ -2170,6 +2575,21 @@ export const accountantAPI = {
       throw error;
     }
 
+    // Log the action
+    if (accountantId && data) {
+      const totalAmount = recordData.tuition_fee + (recordData.accommodation_fee || 0) + (recordData.other_fees || 0);
+      await logAccountantAction(
+        accountantId,
+        'create',
+        'financial_record',
+        data.id,
+        recordData.student_id,
+        `Created financial record for ${recordData.academic_year} S${recordData.semester} - Total: ZMW ${totalAmount}`,
+        null,
+        recordData
+      );
+    }
+
     console.log('Financial record created successfully:', data);
     return data;
   },
@@ -2183,7 +2603,7 @@ export const accountantAPI = {
     payment_date: string;
     processed_by: string;
     notes?: string;
-  }) {
+  }, accountantId?: string) {
     console.log('Recording payment:', paymentData);
 
     const { data, error } = await supabase
@@ -2202,8 +2622,202 @@ export const accountantAPI = {
       throw error;
     }
 
+    // Log the action
+    if (accountantId && data) {
+      await logAccountantAction(
+        accountantId,
+        'create',
+        'payment',
+        data.id,
+        paymentData.student_id,
+        `Recorded payment of ZMW ${paymentData.amount} via ${paymentData.payment_method || 'cash'}${paymentData.reference_number ? ` (Ref: ${paymentData.reference_number})` : ''}`,
+        null,
+        paymentData
+      );
+    }
+
     console.log('Payment recorded successfully:', data);
     return data;
+  },
+
+  // Update financial record
+  async updateFinancialRecord(recordId: string, updateData: {
+    academic_year?: string;
+    semester?: number;
+    tuition_fee?: number;
+    accommodation_fee?: number;
+    other_fees?: number;
+    due_date?: string;
+  }, accountantId?: string) {
+    // Get the old record for logging
+    const { data: oldRecord } = await supabase
+      .from('financial_records')
+      .select(`
+        *,
+        students(student_id, first_name, last_name)
+      `)
+      .eq('id', recordId)
+      .single();
+
+    const { data, error } = await supabase
+      .from('financial_records')
+      .update({
+        ...updateData,
+        total_amount: (updateData.tuition_fee || 0) + (updateData.accommodation_fee || 0) + (updateData.other_fees || 0),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', recordId)
+      .select(`
+        *,
+        students(student_id, first_name, last_name)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    // Log the action
+    if (accountantId && oldRecord && data) {
+      const changes = Object.keys(updateData).filter(key =>
+        updateData[key as keyof typeof updateData] !== oldRecord[key]
+      );
+      await logAccountantAction(
+        accountantId,
+        'update',
+        'financial_record',
+        recordId,
+        oldRecord.student_id,
+        `Updated financial record - Changed: ${changes.join(', ')}`,
+        oldRecord,
+        data
+      );
+    }
+
+    return data;
+  },
+
+  // Delete financial record
+  async deleteFinancialRecord(recordId: string, accountantId?: string) {
+    // Get the record for logging before deletion
+    const { data: recordToDelete } = await supabase
+      .from('financial_records')
+      .select(`
+        *,
+        students(student_id, first_name, last_name)
+      `)
+      .eq('id', recordId)
+      .single();
+
+    const { error } = await supabase
+      .from('financial_records')
+      .delete()
+      .eq('id', recordId);
+
+    if (error) throw error;
+
+    // Log the action
+    if (accountantId && recordToDelete) {
+      await logAccountantAction(
+        accountantId,
+        'delete',
+        'financial_record',
+        recordId,
+        recordToDelete.student_id,
+        `Deleted financial record for ${recordToDelete.academic_year} S${recordToDelete.semester} - Amount: ZMW ${recordToDelete.total_amount}`,
+        recordToDelete,
+        null
+      );
+    }
+
+    return { success: true };
+  },
+
+  // Update payment
+  async updatePayment(paymentId: string, updateData: {
+    amount?: number;
+    payment_method?: string;
+    reference_number?: string;
+    payment_date?: string;
+    notes?: string;
+  }, accountantId?: string) {
+    // Get the old payment for logging
+    const { data: oldPayment } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        students(student_id, first_name, last_name)
+      `)
+      .eq('id', paymentId)
+      .single();
+
+    const { data, error } = await supabase
+      .from('payments')
+      .update({
+        ...updateData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', paymentId)
+      .select(`
+        *,
+        students(student_id, first_name, last_name)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    // Log the action
+    if (accountantId && oldPayment && data) {
+      const changes = Object.keys(updateData).filter(key =>
+        updateData[key as keyof typeof updateData] !== oldPayment[key]
+      );
+      await logAccountantAction(
+        accountantId,
+        'update',
+        'payment',
+        paymentId,
+        oldPayment.student_id,
+        `Updated payment - Changed: ${changes.join(', ')}`,
+        oldPayment,
+        data
+      );
+    }
+
+    return data;
+  },
+
+  // Delete payment
+  async deletePayment(paymentId: string, accountantId?: string) {
+    // Get the payment for logging before deletion
+    const { data: paymentToDelete } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        students(student_id, first_name, last_name)
+      `)
+      .eq('id', paymentId)
+      .single();
+
+    const { error } = await supabase
+      .from('payments')
+      .delete()
+      .eq('id', paymentId);
+
+    if (error) throw error;
+
+    // Log the action
+    if (accountantId && paymentToDelete) {
+      await logAccountantAction(
+        accountantId,
+        'delete',
+        'payment',
+        paymentId,
+        paymentToDelete.student_id,
+        `Deleted payment of ZMW ${paymentToDelete.amount} via ${paymentToDelete.payment_method}${paymentToDelete.reference_number ? ` (Ref: ${paymentToDelete.reference_number})` : ''}`,
+        paymentToDelete,
+        null
+      );
+    }
+
+    return { success: true };
   },
 
   // Get financial records for a student
@@ -2239,30 +2853,7 @@ export const accountantAPI = {
     return data || [];
   },
 
-  // Create invoice
-  async createInvoice(invoiceData: {
-    student_id: string;
-    invoice_number: string;
-    description: string;
-    amount: number;
-    due_date?: string;
-    created_by: string;
-  }) {
-    const { data, error } = await supabase
-      .from('invoices')
-      .insert([{
-        ...invoiceData,
-        status: 'pending'
-      }])
-      .select(`
-        *,
-        students(student_id, first_name, last_name)
-      `)
-      .single();
 
-    if (error) throw error;
-    return data;
-  },
 
   // Get student financial summary
   async getStudentFinancialSummary(studentId: string) {
@@ -2278,12 +2869,6 @@ export const accountantAPI = {
       .select('*')
       .eq('student_id', studentId);
 
-    // Get invoices
-    const { data: invoices } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('student_id', studentId);
-
     const totalOwed = records?.reduce((sum, record) => sum + record.total_amount, 0) || 0;
     const totalPaid = payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
     const totalBalance = totalOwed - totalPaid;
@@ -2291,13 +2876,86 @@ export const accountantAPI = {
     return {
       records: records || [],
       payments: payments || [],
-      invoices: invoices || [],
       summary: {
         totalOwed,
         totalPaid,
         totalBalance
       }
     };
+  },
+
+  // Get accountant logs with filtering and grouping
+  async getAccountantLogs(filters: {
+    accountantId?: string;
+    studentId?: string;
+    actionType?: string;
+    entityType?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) {
+    const { data, error } = await supabase
+      .rpc('get_accountant_logs', {
+        p_accountant_id: filters.accountantId || null,
+        p_student_id: filters.studentId || null,
+        p_action_type: filters.actionType || null,
+        p_entity_type: filters.entityType || null,
+        p_start_date: filters.startDate || null,
+        p_end_date: filters.endDate || null,
+        p_limit: filters.limit || 100,
+        p_offset: filters.offset || 0
+      });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Get logs grouped by date
+  async getLogsGroupedByDate(filters: {
+    accountantId?: string;
+    startDate?: string;
+    endDate?: string;
+  } = {}) {
+    const logs = await this.getAccountantLogs({
+      ...filters,
+      limit: 1000 // Get more logs for grouping
+    });
+
+    // Group logs by date
+    const groupedLogs = logs.reduce((groups: any, log: any) => {
+      const date = log.created_date;
+      if (!groups[date]) {
+        groups[date] = [];
+      }
+      groups[date].push(log);
+      return groups;
+    }, {});
+
+    return groupedLogs;
+  },
+
+  // Get logs grouped by month and year
+  async getLogsGroupedByMonth(filters: {
+    accountantId?: string;
+    year?: number;
+  } = {}) {
+    const logs = await this.getAccountantLogs({
+      ...filters,
+      limit: 1000
+    });
+
+    // Group logs by month and year
+    const groupedLogs = logs.reduce((groups: any, log: any) => {
+      const monthYear = `${log.created_year}-${String(log.created_month).padStart(2, '0')}`;
+      if (!groups[monthYear]) {
+        groups[monthYear] = [];
+      }
+      groups[monthYear].push(log);
+      return groups;
+    }, {});
+
+    return groupedLogs;
   }
 };
 

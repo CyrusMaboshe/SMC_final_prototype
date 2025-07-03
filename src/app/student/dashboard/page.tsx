@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AuthLoadingOverlay } from '@/components/AuthLoadingSpinner';
 import QRCode from 'qrcode';
 import StudentQuizInterface from '@/components/StudentQuizInterface';
+import EnhancedStudentQuizInterface from '@/components/EnhancedStudentQuizInterface';
 import StudentQuizResults from '@/components/StudentQuizResults';
 import StudentAssignmentSubmission from '@/components/StudentAssignmentSubmission';
 import StudentAssignmentResults from '@/components/StudentAssignmentResults';
@@ -1206,6 +1207,9 @@ const StudentDashboard = () => {
   const router = useRouter();
   const { user, profile, authState, logout } = useAuth();
 
+  console.log('Student Dashboard - User:', user);
+  console.log('Student Dashboard - Profile:', profile);
+
   // Redirect if not authenticated or not a student
   useEffect(() => {
     if (authState === 'authenticated' && (!user || user.role !== 'student')) {
@@ -1231,7 +1235,6 @@ const StudentDashboard = () => {
     { id: 'enrolled-courses', label: 'Enrolled Courses', icon: '📚' },
     { id: 'calendar', label: 'Academic Calendar', icon: '📅' },
     { id: 'change-password', label: 'Change Password', icon: '🔒' },
-    { id: 'invoices', label: 'Invoices', icon: '💰' },
     { id: 'financial-statements', label: 'Financial Statements', icon: '📈' }
   ];
 
@@ -1301,7 +1304,7 @@ const StudentDashboard = () => {
         return <StudentQuizResults studentId={profile?.id} />;
 
       case 'attempt-quizzes':
-        return <StudentQuizInterface studentId={profile?.id} />;
+        return <EnhancedStudentQuizInterface studentId={profile?.id} />;
 
       case 'submit-assignments':
         return <StudentAssignmentSubmission studentId={profile?.id} />;
@@ -1332,22 +1335,10 @@ const StudentDashboard = () => {
       case 'change-password':
         return <ChangePasswordForm user={user} />;
 
-      case 'invoices':
-        return <StudentInvoices studentId={profile?.id} />;
-
       case 'financial-statements':
-        return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Financial Statements</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">📈</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Financial Statements Available</h3>
-              <p className="text-gray-600">Your financial statements and payment history will appear here.</p>
-            </div>
-          </div>
-        );
+        console.log('Profile for financial statements:', profile);
+        console.log('Student ID being passed:', profile?.student_id);
+        return <StudentInvoices studentId={profile?.student_id} />;
 
       default:
         return <div>Tab content not found</div>;

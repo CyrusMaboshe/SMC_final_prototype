@@ -7,6 +7,7 @@ import { useRealTimeUpdates } from '@/hooks/useRealTimeUpdates';
 import QuizManager from '@/components/QuizManager';
 import QuizResultsAnalytics from '@/components/QuizResultsAnalytics';
 import AssignmentManager from '@/components/AssignmentManager';
+import EnhancedQuizDashboard from '@/components/EnhancedQuizDashboard';
 
 // CA Results Manager Component
 const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }) => {
@@ -1797,7 +1798,7 @@ const LecturerDashboard = () => {
         return <FinalResultsManager profile={profile} courses={courses} />;
 
       case 'quizzes':
-        return <QuizManager profile={profile} courses={courses} />;
+        return <EnhancedQuizDashboard profile={profile} courses={courses} />;
 
       case 'quiz-results':
         return <QuizResultsAnalytics lecturerId={profile?.id} quizzes={[]} />;

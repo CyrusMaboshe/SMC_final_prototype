@@ -36,7 +36,14 @@ const StudentProfileEditor = ({ student, onClose, onUpdate }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    await onUpdate(student.id, formData);
+
+    // Prepare form data, converting empty date strings to null
+    const processedFormData = {
+      ...formData,
+      date_of_birth: formData.date_of_birth.trim() === '' ? null : formData.date_of_birth
+    };
+
+    await onUpdate(student.id, processedFormData);
     setIsSubmitting(false);
   };
 
@@ -268,6 +275,10 @@ interface Student {
   last_name?: string;
   email?: string;
   phone?: string;
+  date_of_birth?: string | null;
+  address?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
   program?: string;
   year_of_study?: number;
   semester?: number;
@@ -356,7 +367,13 @@ const StudentsManagement = () => {
     setSuccess('');
 
     try {
-      await adminAPI.createStudent(formData);
+      // Prepare form data, converting empty date strings to null
+      const processedFormData = {
+        ...formData,
+        date_of_birth: formData.date_of_birth.trim() === '' ? null : formData.date_of_birth
+      };
+
+      await adminAPI.createStudent(processedFormData);
       setSuccess('Student account created successfully!');
       setFormData({
         student_id: '',

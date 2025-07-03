@@ -177,6 +177,90 @@ export const useStudentRealTimeUpdates = (studentId: string, onUpdate: () => voi
   }, [studentId, onUpdate]);
 }
 
+// Hook for student financial real-time updates (uses student number, not UUID)
+export const useStudentFinancialRealTimeUpdates = (studentNumber: string, onUpdate: () => void) => {
+  useEffect(() => {
+    if (!studentNumber) return;
+
+    const subscriptions: any[] = [];
+
+    // First get the student UUID from the student number
+    const getStudentUUID = async () => {
+      const { data: student } = await supabase
+        .from('students')
+        .select('id')
+        .eq('student_id', studentNumber)
+        .single();
+
+      if (!student) return;
+
+      // Subscribe to financial records for this student
+      const financialChannel = supabase
+        .channel('student_financial_records_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'financial_records',
+            filter: `student_id=eq.${student.id}`
+          },
+          (payload) => {
+            console.log('Financial record update:', payload);
+            onUpdate();
+          }
+        )
+        .subscribe();
+
+      // Subscribe to payments for this student
+      const paymentsChannel = supabase
+        .channel('student_payments_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'payments',
+            filter: `student_id=eq.${student.id}`
+          },
+          (payload) => {
+            console.log('Payment update:', payload);
+            onUpdate();
+          }
+        )
+        .subscribe();
+
+      // Subscribe to invoices for this student
+      const invoicesChannel = supabase
+        .channel('student_invoices_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'invoices',
+            filter: `student_id=eq.${student.id}`
+          },
+          (payload) => {
+            console.log('Invoice update:', payload);
+            onUpdate();
+          }
+        )
+        .subscribe();
+
+      subscriptions.push(financialChannel, paymentsChannel, invoicesChannel);
+    };
+
+    getStudentUUID();
+
+    return () => {
+      subscriptions.forEach(subscription => {
+        supabase.removeChannel(subscription);
+      });
+    };
+  }, [studentNumber, onUpdate]);
+};
+
 // Hook for accountant real-time updates
 export function useAccountantRealTimeUpdates(onUpdate: () => void) {
   useEffect(() => {

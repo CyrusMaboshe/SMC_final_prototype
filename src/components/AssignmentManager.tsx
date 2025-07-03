@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { lecturerAPI, Assignment, AssignmentSubmission } from '@/lib/supabase';
+import { uploadFile, validateFile, formatFileSize, getFileIcon, getSignedUrl } from '@/utils/fileUpload';
 
 interface AssignmentManagerProps {
   profile: any;
@@ -23,6 +24,9 @@ interface AssignmentFormData {
   course_id: string;
   max_score: number;
   due_date: string;
+  file_path?: string;
+  file_name?: string;
+  file_size?: number;
 }
 
 const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses }) => {
@@ -41,8 +45,13 @@ const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses 
     instructions: '',
     course_id: '',
     max_score: 100,
-    due_date: ''
+    due_date: '',
+    file_path: '',
+    file_name: '',
+    file_size: 0
   });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -63,14 +72,49 @@ const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses 
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const validation = validateFile(file, ['application/pdf'], 50 * 1024 * 1024);
+      if (!validation.isValid) {
+        setError(validation.error || 'Invalid file');
+        return;
+      }
+      setSelectedFile(file);
+      setError('');
+    }
+  };
+
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setError('');
+      setUploading(true);
+
+      let fileData = {};
+
+      // Upload file if selected
+      if (selectedFile) {
+        const uploadResult = await uploadFile(selectedFile, {
+          bucket: 'assignments',
+          folder: `course_${formData.course_id}`,
+          allowedTypes: ['application/pdf'],
+          maxSize: 50 * 1024 * 1024
+        });
+
+        fileData = {
+          file_path: uploadResult.path,
+          file_name: uploadResult.fileName,
+          file_size: uploadResult.fileSize
+        };
+      }
+
       await lecturerAPI.createAssignment({
         ...formData,
+        ...fileData,
         created_by: profile.id
       });
+
       setSuccess('Assignment created successfully!');
       setShowCreateForm(false);
       setFormData({
@@ -79,11 +123,17 @@ const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses 
         instructions: '',
         course_id: '',
         max_score: 100,
-        due_date: ''
+        due_date: '',
+        file_path: '',
+        file_name: '',
+        file_size: 0
       });
+      setSelectedFile(null);
       loadAssignments();
     } catch (error: any) {
       setError(error.message || 'Failed to create assignment');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -143,6 +193,46 @@ const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses 
       setError(error.message || 'Failed to grade assignment');
     } finally {
       setGrading(false);
+    }
+  };
+
+  const handleDownloadSubmission = async (submission: any) => {
+    if (!submission.file_path) {
+      setError('No file to download');
+      return;
+    }
+
+    try {
+      const signedUrl = await getSignedUrl('submissions', submission.file_path, 3600);
+      const link = document.createElement('a');
+      link.href = signedUrl;
+      link.download = submission.file_path.split('/').pop() || 'submission.pdf';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error: any) {
+      setError('Failed to download submission: ' + error.message);
+    }
+  };
+
+  const handleDownloadAssignment = async (assignment: AssignmentWithSubmissions) => {
+    if (!assignment.file_path) {
+      setError('No assignment file to download');
+      return;
+    }
+
+    try {
+      const signedUrl = await getSignedUrl('assignments', assignment.file_path, 3600);
+      const link = document.createElement('a');
+      link.href = signedUrl;
+      link.download = assignment.file_name || 'assignment.pdf';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error: any) {
+      setError('Failed to download assignment: ' + error.message);
     }
   };
 
@@ -285,7 +375,10 @@ const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses 
                   <div className="flex justify-between items-center">
                     <div className="flex space-x-2">
                       {submission.file_path && (
-                        <button className="text-green-600 hover:text-green-800 text-sm font-medium">
+                        <button
+                          onClick={() => handleDownloadSubmission(submission)}
+                          className="text-green-600 hover:text-green-800 text-sm font-medium"
+                        >
                           Download File
                         </button>
                       )}
@@ -330,10 +423,32 @@ const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses 
                     <p className="text-sm text-gray-600 mb-2">
                       <span className="font-medium">Due:</span> {formatDate(assignment.due_date)}
                     </p>
-                    <p className="text-sm text-gray-600 mb-4">
+                    <p className="text-sm text-gray-600 mb-2">
                       <span className="font-medium">Max Score:</span> {assignment.max_score} points
                     </p>
-                    
+
+                    {assignment.file_path && (
+                      <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-green-600">{getFileIcon(assignment.file_name || '')}</span>
+                            <span className="text-sm text-green-800 font-medium">
+                              {assignment.file_name || 'Assignment File'}
+                            </span>
+                            <span className="text-xs text-green-600">
+                              ({formatFileSize(assignment.file_size || 0)})
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleDownloadAssignment(assignment)}
+                            className="text-green-600 hover:text-green-800 text-sm font-medium"
+                          >
+                            Download
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex justify-between items-center mb-4">
                       <div className="text-sm">
                         <span className="font-medium">Submissions:</span> {stats.total}
@@ -461,6 +576,30 @@ const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses 
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Assignment PDF (Optional)
+                  </label>
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    accept=".pdf"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {selectedFile && (
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-blue-600">{getFileIcon(selectedFile.name)}</span>
+                        <span className="text-sm text-blue-800 font-medium">{selectedFile.name}</span>
+                        <span className="text-xs text-blue-600">({formatFileSize(selectedFile.size)})</span>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Upload a PDF file containing the assignment questions/instructions. Max size: 50MB
+                  </p>
+                </div>
+
                 <div className="flex justify-end space-x-3 pt-4">
                   <button
                     type="button"
@@ -471,9 +610,13 @@ const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses 
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors"
+                    disabled={uploading}
+                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-orange-400 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
                   >
-                    Create Assignment
+                    {uploading && (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    )}
+                    <span>{uploading ? 'Creating...' : 'Create Assignment'}</span>
                   </button>
                 </div>
               </form>
@@ -547,7 +690,10 @@ const AssignmentManager: React.FC<AssignmentManagerProps> = ({ profile, courses 
                           <p className="text-xs text-gray-500">Submitted file</p>
                         </div>
                       </div>
-                      <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                      <button
+                        onClick={() => handleDownloadSubmission(selectedSubmission)}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
                         Download
                       </button>
                     </div>

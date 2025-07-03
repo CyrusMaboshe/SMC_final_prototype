@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { studentAPI, Assignment } from '@/lib/supabase';
 import { useRealTimeUpdates } from '@/hooks/useRealTimeUpdates';
+import { uploadFile, validateFile, formatFileSize, getFileIcon, getSignedUrl } from '@/utils/fileUpload';
 
 interface StudentAssignmentSubmissionProps {
   studentId: string;
@@ -23,6 +24,7 @@ const StudentAssignmentSubmission: React.FC<StudentAssignmentSubmissionProps> = 
   const [selectedAssignment, setSelectedAssignment] = useState<AssignmentWithSubmission | null>(null);
   const [submissionText, setSubmissionText] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -51,9 +53,9 @@ const StudentAssignmentSubmission: React.FC<StudentAssignmentSubmissionProps> = 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check file size (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        setError('File size must be less than 10MB');
+      const validation = validateFile(file, ['application/pdf'], 50 * 1024 * 1024);
+      if (!validation.isValid) {
+        setError(validation.error || 'Invalid file');
         return;
       }
       setSelectedFile(file);
@@ -69,13 +71,18 @@ const StudentAssignmentSubmission: React.FC<StudentAssignmentSubmissionProps> = 
 
     try {
       setSubmitting(assignment.id);
+      setUploading(true);
       setError('');
 
       let filePath = '';
       if (selectedFile) {
-        // In a real implementation, you would upload the file to storage
-        // For now, we'll just use the filename
-        filePath = `assignments/${studentId}/${assignment.id}/${selectedFile.name}`;
+        const uploadResult = await uploadFile(selectedFile, {
+          bucket: 'submissions',
+          folder: `assignment_${assignment.id}/student_${studentId}`,
+          allowedTypes: ['application/pdf'],
+          maxSize: 50 * 1024 * 1024
+        });
+        filePath = uploadResult.path;
       }
 
       await studentAPI.submitAssignment({
@@ -94,6 +101,27 @@ const StudentAssignmentSubmission: React.FC<StudentAssignmentSubmissionProps> = 
       setError(error.message || 'Failed to submit assignment');
     } finally {
       setSubmitting(null);
+      setUploading(false);
+    }
+  };
+
+  const handleDownloadAssignment = async (assignment: AssignmentWithSubmission) => {
+    if (!assignment.file_path) {
+      setError('No assignment file to download');
+      return;
+    }
+
+    try {
+      const signedUrl = await getSignedUrl('assignments', assignment.file_path, 3600);
+      const link = document.createElement('a');
+      link.href = signedUrl;
+      link.download = assignment.file_name || 'assignment.pdf';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error: any) {
+      setError('Failed to download assignment: ' + error.message);
     }
   };
 
@@ -190,6 +218,30 @@ const StudentAssignmentSubmission: React.FC<StudentAssignmentSubmissionProps> = 
                 </div>
               </div>
 
+              {assignment.file_path && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-blue-600">{getFileIcon(assignment.file_name || '')}</span>
+                      <div>
+                        <p className="text-sm font-medium text-blue-800">
+                          {assignment.file_name || 'Assignment File'}
+                        </p>
+                        <p className="text-xs text-blue-600">
+                          {formatFileSize(assignment.file_size || 0)}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDownloadAssignment(assignment)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors"
+                    >
+                      Download PDF
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {assignment.description && (
                 <div className="mb-4">
                   <h4 className="font-medium text-gray-900 mb-2">Description:</h4>
@@ -254,21 +306,25 @@ const StudentAssignmentSubmission: React.FC<StudentAssignmentSubmissionProps> = 
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    File Upload (Optional)
+                    PDF Submission (Optional)
                   </label>
                   <input
                     type="file"
                     onChange={handleFileChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+                    accept=".pdf"
                   />
                   {selectedFile && (
-                    <p className="text-sm text-gray-600 mt-1">
-                      Selected: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                    </p>
+                    <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-green-600">{getFileIcon(selectedFile.name)}</span>
+                        <span className="text-sm text-green-800 font-medium">{selectedFile.name}</span>
+                        <span className="text-xs text-green-600">({formatFileSize(selectedFile.size)})</span>
+                      </div>
+                    </div>
                   )}
                   <p className="text-xs text-gray-500 mt-1">
-                    Accepted formats: PDF, DOC, DOCX, TXT, JPG, PNG (Max 10MB)
+                    Upload your assignment answer as a PDF file. Max size: 50MB
                   </p>
                 </div>
               </div>
@@ -287,10 +343,15 @@ const StudentAssignmentSubmission: React.FC<StudentAssignmentSubmissionProps> = 
                 </button>
                 <button
                   onClick={() => handleSubmit(selectedAssignment)}
-                  disabled={submitting === selectedAssignment.id}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                  disabled={submitting === selectedAssignment.id || uploading}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center space-x-2"
                 >
-                  {submitting === selectedAssignment.id ? 'Submitting...' : 'Submit Assignment'}
+                  {(submitting === selectedAssignment.id || uploading) && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  )}
+                  <span>
+                    {uploading ? 'Uploading...' : submitting === selectedAssignment.id ? 'Submitting...' : 'Submit Assignment'}
+                  </span>
                 </button>
               </div>
             </div>

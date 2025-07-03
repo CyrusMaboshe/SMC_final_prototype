@@ -39,7 +39,11 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
   const [loading, setLoading] = useState(true);
   const [showAddRecord, setShowAddRecord] = useState(false);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [showEditRecord, setShowEditRecord] = useState(false);
+  const [showEditPayment, setShowEditPayment] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState('');
+  const [editingRecord, setEditingRecord] = useState<any>(null);
+  const [editingPayment, setEditingPayment] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -142,7 +146,7 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
     e.preventDefault();
     try {
       setError('');
-      await accountantAPI.createFinancialRecord(recordForm);
+      await accountantAPI.createFinancialRecord(recordForm, accountantId);
       setSuccess('Financial record created successfully!');
       setShowAddRecord(false);
       setRecordForm({
@@ -167,7 +171,7 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
       await accountantAPI.recordPayment({
         ...paymentForm,
         processed_by: accountantId
-      });
+      }, accountantId);
       setSuccess('Payment recorded successfully!');
       setShowRecordPayment(false);
       setPaymentForm({
@@ -181,6 +185,104 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
       loadData();
     } catch (error: any) {
       setError(error.message || 'Failed to record payment');
+    }
+  };
+
+  const handleEditRecord = (record: any) => {
+    setEditingRecord(record);
+    setRecordForm({
+      student_id: record.student_id,
+      academic_year: record.academic_year,
+      semester: record.semester,
+      tuition_fee: record.tuition_fee,
+      accommodation_fee: record.accommodation_fee,
+      other_fees: record.other_fees,
+      due_date: record.due_date
+    });
+    setShowEditRecord(true);
+  };
+
+  const handleUpdateRecord = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setError('');
+      await accountantAPI.updateFinancialRecord(editingRecord.id, recordForm, accountantId);
+      setSuccess('Financial record updated successfully!');
+      setShowEditRecord(false);
+      setEditingRecord(null);
+      setRecordForm({
+        student_id: '',
+        academic_year: '2024-2025',
+        semester: 1,
+        tuition_fee: 0,
+        accommodation_fee: 0,
+        other_fees: 0,
+        due_date: ''
+      });
+      loadData();
+    } catch (error: any) {
+      setError(error.message || 'Failed to update financial record');
+    }
+  };
+
+  const handleDeleteRecord = async (recordId: string) => {
+    if (!confirm('Are you sure you want to delete this financial record?')) return;
+
+    try {
+      setError('');
+      await accountantAPI.deleteFinancialRecord(recordId, accountantId);
+      setSuccess('Financial record deleted successfully!');
+      loadData();
+    } catch (error: any) {
+      setError(error.message || 'Failed to delete financial record');
+    }
+  };
+
+  const handleEditPayment = (payment: any) => {
+    setEditingPayment(payment);
+    setPaymentForm({
+      student_id: payment.student_id,
+      amount: payment.amount,
+      payment_method: payment.payment_method,
+      reference_number: payment.reference_number || '',
+      payment_date: payment.payment_date,
+      notes: payment.notes || ''
+    });
+    setShowEditPayment(true);
+  };
+
+  const handleUpdatePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setError('');
+      await accountantAPI.updatePayment(editingPayment.id, paymentForm, accountantId);
+      setSuccess('Payment updated successfully!');
+      setShowEditPayment(false);
+      setEditingPayment(null);
+      setPaymentForm({
+        student_id: '',
+        amount: 0,
+        payment_method: 'cash',
+        reference_number: '',
+        payment_date: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      loadData();
+    } catch (error: any) {
+      setError(error.message || 'Failed to update payment');
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!confirm('Are you sure you want to delete this payment?')) return;
+
+    try {
+      setError('');
+      await accountantAPI.deletePayment(paymentId, accountantId);
+      setSuccess('Payment deleted successfully!');
+      loadData();
+    } catch (error: any) {
+      setError(error.message || 'Failed to delete payment');
     }
   };
 
@@ -305,12 +407,15 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Reference
                 </th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                     <div className="flex flex-col items-center">
                       <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
                         <span className="text-2xl">📋</span>
@@ -354,6 +459,45 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {entry.reference_number || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                      <div className="flex justify-center space-x-2">
+                        {entry.type === 'fee' ? (
+                          <>
+                            <button
+                              onClick={() => handleEditRecord(entry)}
+                              className="text-blue-600 hover:text-blue-900 text-xs"
+                              title="Edit Record"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRecord(entry.id)}
+                              className="text-red-600 hover:text-red-900 text-xs"
+                              title="Delete Record"
+                            >
+                              🗑️
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleEditPayment(entry)}
+                              className="text-blue-600 hover:text-blue-900 text-xs"
+                              title="Edit Payment"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => handleDeletePayment(entry.id)}
+                              className="text-red-600 hover:text-red-900 text-xs"
+                              title="Delete Payment"
+                            >
+                              🗑️
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -639,6 +783,247 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
                   >
                     Record Payment
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Financial Record Modal */}
+      {showEditRecord && editingRecord && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Edit Financial Record</h3>
+                <button
+                  onClick={() => {
+                    setShowEditRecord(false);
+                    setEditingRecord(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateRecord} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Academic Year
+                    </label>
+                    <input
+                      type="text"
+                      value={recordForm.academic_year}
+                      onChange={(e) => setRecordForm({...recordForm, academic_year: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Semester
+                    </label>
+                    <select
+                      value={recordForm.semester}
+                      onChange={(e) => setRecordForm({...recordForm, semester: parseInt(e.target.value)})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    >
+                      <option value={1}>Semester 1</option>
+                      <option value={2}>Semester 2</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Tuition Fee (ZMW)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={recordForm.tuition_fee}
+                      onChange={(e) => setRecordForm({...recordForm, tuition_fee: parseFloat(e.target.value) || 0})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Accommodation Fee (ZMW)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={recordForm.accommodation_fee}
+                      onChange={(e) => setRecordForm({...recordForm, accommodation_fee: parseFloat(e.target.value) || 0})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Other Fees (ZMW)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={recordForm.other_fees}
+                      onChange={(e) => setRecordForm({...recordForm, other_fees: parseFloat(e.target.value) || 0})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Due Date
+                    </label>
+                    <input
+                      type="date"
+                      value={recordForm.due_date}
+                      onChange={(e) => setRecordForm({...recordForm, due_date: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditRecord(false);
+                      setEditingRecord(null);
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Update Record
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Payment Modal */}
+      {showEditPayment && editingPayment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Edit Payment</h3>
+                <button
+                  onClick={() => {
+                    setShowEditPayment(false);
+                    setEditingPayment(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdatePayment} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Amount (ZMW)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={paymentForm.amount}
+                      onChange={(e) => setPaymentForm({...paymentForm, amount: parseFloat(e.target.value) || 0})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Method
+                    </label>
+                    <select
+                      value={paymentForm.payment_method}
+                      onChange={(e) => setPaymentForm({...paymentForm, payment_method: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="bank_transfer">Bank Transfer</option>
+                      <option value="mobile_money">Mobile Money</option>
+                      <option value="cheque">Cheque</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Reference Number
+                    </label>
+                    <input
+                      type="text"
+                      value={paymentForm.reference_number}
+                      onChange={(e) => setPaymentForm({...paymentForm, reference_number: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Date
+                    </label>
+                    <input
+                      type="date"
+                      value={paymentForm.payment_date}
+                      onChange={(e) => setPaymentForm({...paymentForm, payment_date: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Notes
+                  </label>
+                  <textarea
+                    value={paymentForm.notes}
+                    onChange={(e) => setPaymentForm({...paymentForm, notes: e.target.value})}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditPayment(false);
+                      setEditingPayment(null);
+                    }}
+                    className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Update Payment
                   </button>
                 </div>
               </form>

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, AccountantProfile, accountantAPI } from '@/lib/supabase';
 import FinancialLedger from '@/components/FinancialLedger';
+import AccountantLogs from '@/components/AccountantLogs';
 
 interface AccountantDashboardProps {}
 
@@ -172,6 +173,9 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = () => {
           </div>
         );
 
+      case 'logs':
+        return <AccountantLogs accountantId={user?.id} />;
+
       default:
         return <div>Tab content not found</div>;
     }
@@ -191,6 +195,7 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = () => {
     { id: 'payments', label: 'Record Payments', icon: '💰' },
     { id: 'invoices', label: 'Manage Invoices', icon: '📄' },
     { id: 'reports', label: 'Reports', icon: '📈' },
+    { id: 'logs', label: 'Activity Logs', icon: '📜' },
   ];
 
   return (
