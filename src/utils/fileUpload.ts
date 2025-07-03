@@ -8,7 +8,7 @@ export interface FileUploadResult {
 }
 
 export interface FileUploadOptions {
-  bucket: 'assignments' | 'submissions';
+  bucket: 'assignments' | 'submissions' | 'updates';
   folder?: string;
   allowedTypes?: string[];
   maxSize?: number; // in bytes
@@ -60,10 +60,10 @@ export async function uploadFile(
       throw new Error(`Upload failed: ${error.message}`);
     }
 
-    // Get public URL (for assignments) or signed URL (for submissions)
+    // Get public URL (for assignments and updates) or signed URL (for submissions)
     let url: string;
-    if (bucket === 'assignments') {
-      // Assignments can be publicly accessible to enrolled students
+    if (bucket === 'assignments' || bucket === 'updates') {
+      // Assignments and updates can be publicly accessible
       const { data: urlData } = supabase.storage
         .from(bucket)
         .getPublicUrl(filePath);
@@ -73,7 +73,7 @@ export async function uploadFile(
       const { data: urlData, error: urlError } = await supabase.storage
         .from(bucket)
         .createSignedUrl(filePath, 3600 * 24 * 7); // 7 days expiry
-      
+
       if (urlError) {
         throw new Error(`Failed to create signed URL: ${urlError.message}`);
       }

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, updatesAPI, Update } from '@/lib/supabase';
 import { useRealTimeUpdates } from '@/hooks/useRealTimeUpdates';
+import { uploadFile, validateFile, formatFileSize, getFileIcon } from '@/utils/fileUpload';
 
 const UpdatesManagement = () => {
   const [user, setUser] = useState(null);
@@ -26,6 +27,8 @@ const UpdatesManagement = () => {
     expiry_date: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const router = useRouter();
@@ -117,6 +120,19 @@ const UpdatesManagement = () => {
     setFilteredUpdates(filtered);
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const validation = validateFile(file, ['application/pdf', 'image/jpeg', 'image/png'], 50 * 1024 * 1024);
+      if (!validation.isValid) {
+        setError(validation.error || 'Invalid file');
+        return;
+      }
+      setSelectedFile(file);
+      setError('');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -125,22 +141,51 @@ const UpdatesManagement = () => {
 
     try {
       // Get the actual user UUID from database
-      const userUUID = await authAPI.getCurrentUserUUID();
+      const currentUser = authAPI.getCurrentUser();
+
+      let userUUID = await authAPI.getCurrentUserUUID();
+
+      // Fallback: use known admin UUID if database query fails
+      if (!userUUID && currentUser?.username === 'SMC20252025') {
+        userUUID = 'a5255f32-9126-4d37-afa7-ef58a08e8b4f';
+      }
+
       if (!userUUID) {
         setError('Unable to get user information. Please log in again.');
         setIsSubmitting(false);
         return;
       }
 
+      let fileData = {};
+
+      // Upload file if selected
+      if (selectedFile) {
+        setUploading(true);
+        const uploadResult = await uploadFile(selectedFile, {
+          bucket: 'updates',
+          folder: `update_${Date.now()}`,
+          allowedTypes: ['application/pdf', 'image/jpeg', 'image/png'],
+          maxSize: 50 * 1024 * 1024
+        });
+
+        fileData = {
+          file_path: uploadResult.path,
+          file_name: uploadResult.fileName,
+          file_size: uploadResult.fileSize,
+          file_url: uploadResult.url
+        };
+        setUploading(false);
+      }
+
       const updateData = {
         ...formData,
+        ...fileData,
         created_by: userUUID,
-        publish_date: formData.publish_date || null,
-        expiry_date: formData.expiry_date || null
+        publish_date: formData.publish_date || undefined,
+        expiry_date: formData.expiry_date || undefined
       };
 
-      console.log('Submitting update data:', updateData);
-      console.log('User UUID:', userUUID);
+
 
       if (editingUpdate) {
         await updatesAPI.update(editingUpdate.id, updateData);
@@ -228,6 +273,7 @@ const UpdatesManagement = () => {
       publish_date: '',
       expiry_date: ''
     });
+    setSelectedFile(null);
     setEditingUpdate(null);
     setShowCreateForm(false);
   };
@@ -515,6 +561,22 @@ const UpdatesManagement = () => {
                         <div className="text-sm text-gray-500 max-w-xs truncate">
                           {update.content}
                         </div>
+                        {update.file_name && (
+                          <div className="mt-1 flex items-center text-xs text-blue-600">
+                            <span className="mr-1">{getFileIcon(update.file_name)}</span>
+                            <span className="truncate max-w-32">{update.file_name}</span>
+                            {update.file_url && (
+                              <a
+                                href={update.file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ml-1 text-blue-500 hover:text-blue-700"
+                              >
+                                📥
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -676,6 +738,37 @@ const UpdatesManagement = () => {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Attachment (Optional)
+                    </label>
+                    <input
+                      type="file"
+                      onChange={handleFileChange}
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {selectedFile && (
+                      <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-blue-600">{getFileIcon(selectedFile.name)}</span>
+                          <span className="text-sm text-blue-800 font-medium">{selectedFile.name}</span>
+                          <span className="text-xs text-blue-600">({formatFileSize(selectedFile.size)})</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFile(null)}
+                            className="ml-auto text-red-500 hover:text-red-700"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Upload a PDF document or image. Max size: 50MB
+                    </p>
+                  </div>
+
                   <div className="flex items-center">
                     <input
                       type="checkbox"
@@ -699,10 +792,10 @@ const UpdatesManagement = () => {
                     </button>
                     <button
                       type="submit"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || uploading}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
                     >
-                      {isSubmitting ? 'Saving...' : (editingUpdate ? 'Update' : 'Create')}
+                      {uploading ? 'Uploading...' : isSubmitting ? 'Saving...' : (editingUpdate ? 'Update' : 'Create')}
                     </button>
                   </div>
                 </form>

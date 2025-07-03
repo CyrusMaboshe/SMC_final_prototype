@@ -202,6 +202,10 @@ export interface Update {
   publish_date?: string;
   expiry_date?: string;
   created_by: string;
+  file_path?: string;
+  file_name?: string;
+  file_size?: number;
+  file_url?: string;
   created_at: string;
   updated_at: string;
 }
