@@ -472,12 +472,14 @@ export const updatesAPI = {
 
   // Delete update (admin only)
   async delete(id: string) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('updates')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .select();
 
     if (error) throw error;
+    return data;
   },
 
   // Admin-specific functions
@@ -535,12 +537,14 @@ export const updatesAPI = {
 
   // Bulk delete updates
   async bulkDelete(ids: string[]) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('updates')
       .delete()
-      .in('id', ids);
+      .in('id', ids)
+      .select();
 
     if (error) throw error;
+    return data;
   },
 
   // Get updates statistics for admin dashboard
