@@ -444,8 +444,98 @@ export const updatesAPI = {
       .from('updates')
       .delete()
       .eq('id', id);
-    
+
     if (error) throw error;
+  },
+
+  // Admin-specific functions
+  // Get all updates (including unpublished) for admin management
+  async getAllForAdmin() {
+    const { data, error } = await supabase
+      .from('updates')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get updates by category for admin (including unpublished)
+  async getByCategoryForAdmin(category: Update['category']) {
+    const { data, error } = await supabase
+      .from('updates')
+      .select('*')
+      .eq('category', category)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get updates by status for admin
+  async getByStatus(isPublished: boolean) {
+    const { data, error } = await supabase
+      .from('updates')
+      .select('*')
+      .eq('is_published', isPublished)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Bulk publish/unpublish updates
+  async bulkUpdateStatus(ids: string[], isPublished: boolean) {
+    const { data, error } = await supabase
+      .from('updates')
+      .update({
+        is_published: isPublished,
+        updated_at: new Date().toISOString()
+      })
+      .in('id', ids)
+      .select();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Bulk delete updates
+  async bulkDelete(ids: string[]) {
+    const { error } = await supabase
+      .from('updates')
+      .delete()
+      .in('id', ids);
+
+    if (error) throw error;
+  },
+
+  // Get updates statistics for admin dashboard
+  async getStatistics() {
+    const { data, error } = await supabase
+      .from('updates')
+      .select('category, priority, is_published');
+
+    if (error) throw error;
+
+    const stats = {
+      total: data?.length || 0,
+      published: data?.filter(u => u.is_published).length || 0,
+      unpublished: data?.filter(u => !u.is_published).length || 0,
+      byCategory: {
+        exam_announcements: data?.filter(u => u.category === 'exam_announcements').length || 0,
+        meeting_schedules: data?.filter(u => u.category === 'meeting_schedules').length || 0,
+        graduation_alerts: data?.filter(u => u.category === 'graduation_alerts').length || 0,
+        general_updates: data?.filter(u => u.category === 'general_updates').length || 0
+      },
+      byPriority: {
+        low: data?.filter(u => u.priority === 'low').length || 0,
+        normal: data?.filter(u => u.priority === 'normal').length || 0,
+        high: data?.filter(u => u.priority === 'high').length || 0,
+        urgent: data?.filter(u => u.priority === 'urgent').length || 0
+      }
+    };
+
+    return stats;
   }
 };
 

@@ -378,7 +378,21 @@ export const useAdminRealTimeUpdates = (onUpdate: () => void) => {
       )
       .subscribe();
 
-    subscriptions.push(studentsChannel, lecturersChannel, coursesChannel, applicationsChannel);
+    // Subscribe to updates table
+    const updatesChannel = supabase
+      .channel('updates_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'updates'
+        },
+        onUpdate
+      )
+      .subscribe();
+
+    subscriptions.push(studentsChannel, lecturersChannel, coursesChannel, applicationsChannel, updatesChannel);
 
     return () => {
       subscriptions.forEach(subscription => {
