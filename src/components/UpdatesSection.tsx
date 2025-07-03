@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { updatesAPI, Update } from '@/lib/supabase';
+import { getFileIcon, formatFileSize } from '@/utils/fileUpload';
 
 const UpdatesSection = () => {
   const [updates, setUpdates] = useState<Update[]>([]);
@@ -179,7 +180,39 @@ const UpdatesSection = () => {
                 <p className="text-gray-600 mb-4 line-clamp-3">
                   {update.content}
                 </p>
-                
+
+                {/* File Attachment Display */}
+                {update.file_name && update.file_url && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-blue-600 text-lg">{getFileIcon(update.file_name)}</span>
+                        <div>
+                          <p className="text-sm font-medium text-blue-900 truncate max-w-48">
+                            {update.file_name}
+                          </p>
+                          {update.file_size && (
+                            <p className="text-xs text-blue-600">
+                              {formatFileSize(update.file_size)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <a
+                        href={update.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center space-x-1"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span>Download</span>
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between text-sm text-gray-500">
                   <span className="bg-gray-100 px-2 py-1 rounded-full">
                     {getCategoryLabel(update.category)}
