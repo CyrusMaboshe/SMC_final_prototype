@@ -1349,6 +1349,7 @@ const LecturerDashboard = () => {
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const router = useRouter();
 
   // Real-time updates for courses and enrollments
@@ -1522,70 +1523,70 @@ const LecturerDashboard = () => {
       case 'overview':
         return (
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Lecturer Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
+            <h2 className="text-xl lg:text-2xl font-bold text-gray-900 mb-4 lg:mb-6">Lecturer Overview</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
+              <div className="bg-blue-50 rounded-lg p-4 lg:p-6 border border-blue-200">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white text-sm">📚</span>
+                    <div className="w-10 h-10 lg:w-8 lg:h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                      <span className="text-white text-base lg:text-sm">📚</span>
                     </div>
                   </div>
-                  <div className="ml-4">
+                  <div className="ml-3 lg:ml-4">
                     <p className="text-sm font-medium text-blue-600">My Courses</p>
-                    <p className="text-2xl font-bold text-blue-900">{courses.length}</p>
+                    <p className="text-xl lg:text-2xl font-bold text-blue-900">{courses.length}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-green-50 rounded-lg p-6 border border-green-200">
+              <div className="bg-green-50 rounded-lg p-4 lg:p-6 border border-green-200">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white text-sm">👥</span>
+                    <div className="w-10 h-10 lg:w-8 lg:h-8 bg-green-600 rounded-lg flex items-center justify-center">
+                      <span className="text-white text-base lg:text-sm">👥</span>
                     </div>
                   </div>
-                  <div className="ml-4">
+                  <div className="ml-3 lg:ml-4">
                     <p className="text-sm font-medium text-green-600">Total Students</p>
-                    <p className="text-2xl font-bold text-green-900">
+                    <p className="text-xl lg:text-2xl font-bold text-green-900">
                       {courses.reduce((total: number, course: any) => total + (course.course_enrollments?.length || 0), 0)}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-purple-50 rounded-lg p-6 border border-purple-200">
+              <div className="bg-purple-50 rounded-lg p-4 lg:p-6 border border-purple-200">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white text-sm">🧠</span>
+                    <div className="w-10 h-10 lg:w-8 lg:h-8 bg-purple-600 rounded-lg flex items-center justify-center">
+                      <span className="text-white text-base lg:text-sm">🧠</span>
                     </div>
                   </div>
-                  <div className="ml-4">
+                  <div className="ml-3 lg:ml-4">
                     <p className="text-sm font-medium text-purple-600">Active Quizzes</p>
-                    <p className="text-2xl font-bold text-purple-900">{quizzes.length}</p>
+                    <p className="text-xl lg:text-2xl font-bold text-purple-900">{quizzes.length}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-orange-50 rounded-lg p-6 border border-orange-200">
+              <div className="bg-orange-50 rounded-lg p-4 lg:p-6 border border-orange-200">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white text-sm">📝</span>
+                    <div className="w-10 h-10 lg:w-8 lg:h-8 bg-orange-600 rounded-lg flex items-center justify-center">
+                      <span className="text-white text-base lg:text-sm">📝</span>
                     </div>
                   </div>
-                  <div className="ml-4">
+                  <div className="ml-3 lg:ml-4">
                     <p className="text-sm font-medium text-orange-600">Assignments</p>
-                    <p className="text-2xl font-bold text-orange-900">0</p>
+                    <p className="text-xl lg:text-2xl font-bold text-orange-900">0</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <div className="bg-white rounded-lg border border-gray-200 p-4 lg:p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Lecturer Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Lecturer ID</label>
                   <p className="text-gray-900 font-semibold">{profile?.lecturer_id || 'Not available'}</p>
@@ -1837,18 +1838,26 @@ const LecturerDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
+              {/* Mobile menu button */}
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 mr-3"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
               <div className="flex-shrink-0">
-                <h1 className="text-xl font-bold text-gray-900">Lecturer Dashboard</h1>
+                <h1 className="text-lg lg:text-xl font-bold text-gray-900">Lecturer Dashboard</h1>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">
+            <div className="flex items-center space-x-2 lg:space-x-4">
+              <span className="text-xs lg:text-sm text-gray-700 hidden sm:block">
                 Welcome, {profile?.first_name ? `Dr. ${profile.first_name} ${profile.last_name}` : 'Lecturer'}
               </span>
-
               <button
                 onClick={handleLogout}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 lg:px-4 rounded-lg text-xs lg:text-sm font-medium transition-colors"
               >
                 Logout
               </button>
@@ -1857,11 +1866,50 @@ const LecturerDashboard = () => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Left Sidebar Navigation */}
-          <div className="lg:w-64 flex-shrink-0">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="fixed inset-0 bg-black bg-opacity-50" onClick={() => setSidebarOpen(false)}></div>
+          <div className="fixed top-0 left-0 bottom-0 w-64 bg-white shadow-xl">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-900">Lecturer Menu</h3>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <nav className="p-2 overflow-y-auto h-full pb-20">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-3 rounded-lg text-sm font-medium transition-colors mb-1 ${
+                    activeTab === tab.id
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <span className="mr-3 text-lg">{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 lg:py-8">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-8">
+          {/* Desktop Sidebar Navigation */}
+          <div className="hidden lg:block lg:w-64 flex-shrink-0">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 sticky top-4">
               <div className="p-4 border-b border-gray-200">
                 <h3 className="font-semibold text-gray-900">Lecturer Menu</h3>
               </div>
@@ -1885,8 +1933,26 @@ const LecturerDashboard = () => {
           </div>
 
           {/* Main Content Area */}
-          <div className="flex-1">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="flex-1 min-w-0">
+            {/* Mobile tab indicator */}
+            <div className="lg:hidden mb-4 bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <span className="text-lg mr-2">{tabs.find(tab => tab.id === activeTab)?.icon}</span>
+                  <span className="font-medium text-gray-900">{tabs.find(tab => tab.id === activeTab)?.label}</span>
+                </div>
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 lg:p-6">
               {renderTabContent()}
             </div>
           </div>
