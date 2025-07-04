@@ -199,13 +199,13 @@ const ApplyNowForm = () => {
       // Upload files
       const fileUploads = [];
 
-      if (nrcPhoto.file && nrcPhoto.validation) {
+      if (nrcPhoto.file && nrcPhoto.validation && nrcPhoto.validation.isValid) {
         fileUploads.push(
           uploadApplicationFile(
             nrcPhoto.file,
-            'applications',
-            `${application.id}/nrc_photo`,
-            nrcPhoto.validation.metadata
+            application.id,
+            'nrc_photo',
+            nrcPhoto.validation
           ).then(async result => {
             const fileResponse = await fetch('/api/upload-application-file', {
               method: 'POST',
@@ -219,8 +219,8 @@ const ApplyNowForm = () => {
                 file_name: nrcPhoto.file!.name,
                 file_size: nrcPhoto.file!.size,
                 file_url: result.url,
-                authenticity_score: nrcPhoto.validation!.authenticityScore,
-                authenticity_flags: nrcPhoto.validation!.authenticityFlags
+                authenticity_score: nrcPhoto.validation?.authenticityScore || 0,
+                authenticity_flags: nrcPhoto.validation?.authenticityFlags || []
               })
             });
 
@@ -234,13 +234,13 @@ const ApplyNowForm = () => {
         );
       }
 
-      if (grade12Results.file && grade12Results.validation) {
+      if (grade12Results.file && grade12Results.validation && grade12Results.validation.isValid) {
         fileUploads.push(
           uploadApplicationFile(
             grade12Results.file,
-            'applications',
-            `${application.id}/grade12_results`,
-            grade12Results.validation.metadata
+            application.id,
+            'grade12_results',
+            grade12Results.validation
           ).then(async result => {
             const fileResponse = await fetch('/api/upload-application-file', {
               method: 'POST',
@@ -254,8 +254,8 @@ const ApplyNowForm = () => {
                 file_name: grade12Results.file!.name,
                 file_size: grade12Results.file!.size,
                 file_url: result.url,
-                authenticity_score: grade12Results.validation!.authenticityScore,
-                authenticity_flags: grade12Results.validation!.authenticityFlags
+                authenticity_score: grade12Results.validation?.authenticityScore || 0,
+                authenticity_flags: grade12Results.validation?.authenticityFlags || []
               })
             });
 
@@ -269,13 +269,13 @@ const ApplyNowForm = () => {
         );
       }
 
-      if (paymentReceipt.file && paymentReceipt.validation) {
+      if (paymentReceipt.file && paymentReceipt.validation && paymentReceipt.validation.isValid) {
         fileUploads.push(
           uploadApplicationFile(
             paymentReceipt.file,
-            'applications',
-            `${application.id}/payment_receipt`,
-            paymentReceipt.validation.metadata
+            application.id,
+            'payment_receipt',
+            paymentReceipt.validation
           ).then(async result => {
             const fileResponse = await fetch('/api/upload-application-file', {
               method: 'POST',
@@ -289,8 +289,8 @@ const ApplyNowForm = () => {
                 file_name: paymentReceipt.file!.name,
                 file_size: paymentReceipt.file!.size,
                 file_url: result.url,
-                authenticity_score: paymentReceipt.validation!.authenticityScore,
-                authenticity_flags: paymentReceipt.validation!.authenticityFlags
+                authenticity_score: paymentReceipt.validation?.authenticityScore || 0,
+                authenticity_flags: paymentReceipt.validation?.authenticityFlags || []
               })
             });
 
