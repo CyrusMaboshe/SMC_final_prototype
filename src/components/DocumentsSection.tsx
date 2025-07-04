@@ -64,12 +64,12 @@ const DocumentsSection = () => {
     return categoryData ? categoryData.label : category;
   };
 
-  const handleDownload = async (document: Document) => {
+  const handleDownload = async (doc: Document) => {
     try {
-      setDownloadingIds(prev => new Set(prev).add(document.id));
+      setDownloadingIds(prev => new Set(prev).add(doc.id));
 
       // Increment download count
-      await documentsAPI.incrementDownload(document.id);
+      await documentsAPI.incrementDownload(doc.id);
 
       // Generate download URL using server-side API
       const response = await fetch('/api/generate-url', {
@@ -79,7 +79,7 @@ const DocumentsSection = () => {
         },
         body: JSON.stringify({
           bucket: 'documents',
-          filePath: document.file_path,
+          filePath: doc.file_path,
           expiresIn: 3600 // 1 hour
         })
       });
@@ -94,7 +94,7 @@ const DocumentsSection = () => {
       // Create download link
       const link = document.createElement('a');
       link.href = url;
-      link.download = document.file_name;
+      link.download = doc.file_name;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
@@ -102,10 +102,10 @@ const DocumentsSection = () => {
 
       // Update local state to reflect new download count
       setDocuments(prev =>
-        prev.map(doc =>
-          doc.id === document.id
-            ? { ...doc, download_count: doc.download_count + 1 }
-            : doc
+        prev.map(document =>
+          document.id === doc.id
+            ? { ...document, download_count: document.download_count + 1 }
+            : document
         )
       );
     } catch (err: any) {
@@ -114,7 +114,7 @@ const DocumentsSection = () => {
     } finally {
       setDownloadingIds(prev => {
         const newSet = new Set(prev);
-        newSet.delete(document.id);
+        newSet.delete(doc.id);
         return newSet;
       });
     }
