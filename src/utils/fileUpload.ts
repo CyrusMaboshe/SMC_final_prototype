@@ -532,20 +532,30 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
- * Generate URL from file path for staff photos
+ * Generate URL from file path for staff photos using server-side API
  */
 export async function generateStaffPhotoUrl(filePath: string): Promise<string> {
   try {
-    // For staff photos, use signed URLs for privacy
-    const { data, error } = await supabase.storage
-      .from('staff-photos')
-      .createSignedUrl(filePath, 3600 * 24 * 7); // 7 days expiry
+    // Use server-side API to generate signed URL (bypasses RLS)
+    const response = await fetch('/api/generate-url', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        bucket: 'staff-photos',
+        filePath: filePath,
+        expiresIn: 3600 * 24 * 7 // 7 days
+      })
+    });
 
-    if (error) {
-      throw new Error(`Failed to create signed URL: ${error.message}`);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to generate URL');
     }
 
-    return data.signedUrl;
+    const data = await response.json();
+    return data.url;
   } catch (error: any) {
     throw new Error(`Failed to generate staff photo URL: ${error.message}`);
   }

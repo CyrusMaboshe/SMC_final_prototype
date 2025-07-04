@@ -67,23 +67,43 @@ const DocumentsSection = () => {
   const handleDownload = async (document: Document) => {
     try {
       setDownloadingIds(prev => new Set(prev).add(document.id));
-      
+
       // Increment download count
       await documentsAPI.incrementDownload(document.id);
-      
+
+      // Generate download URL using server-side API
+      const response = await fetch('/api/generate-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          bucket: 'documents',
+          filePath: document.file_path,
+          expiresIn: 3600 // 1 hour
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate download URL');
+      }
+
+      const { url } = await response.json();
+
       // Create download link
       const link = document.createElement('a');
-      link.href = document.file_path;
+      link.href = url;
       link.download = document.file_name;
       link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       // Update local state to reflect new download count
-      setDocuments(prev => 
-        prev.map(doc => 
-          doc.id === document.id 
+      setDocuments(prev =>
+        prev.map(doc =>
+          doc.id === document.id
             ? { ...doc, download_count: doc.download_count + 1 }
             : doc
         )
