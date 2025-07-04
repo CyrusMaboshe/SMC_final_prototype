@@ -180,8 +180,21 @@ const ApplyNowForm = () => {
         }
       }
 
-      // Submit application first
-      const application = await applicationAPI.submit(formData);
+      // Submit application first using server-side API
+      const response = await fetch('/api/submit-application', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to submit application');
+      }
+
+      const { application } = await response.json();
 
       // Upload files
       const fileUploads = [];
@@ -193,17 +206,31 @@ const ApplyNowForm = () => {
             'applications',
             `${application.id}/nrc_photo`,
             nrcPhoto.validation.metadata
-          ).then(result =>
-            applicationAPI.uploadFile(application.id, {
-              file_type: 'nrc_photo',
-              file_path: result.path,
-              file_name: nrcPhoto.file!.name,
-              file_size: nrcPhoto.file!.size,
-              file_url: result.url,
-              authenticity_score: nrcPhoto.validation!.authenticityScore,
-              authenticity_flags: nrcPhoto.validation!.authenticityFlags
-            })
-          )
+          ).then(async result => {
+            const fileResponse = await fetch('/api/upload-application-file', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                application_id: application.id,
+                file_type: 'nrc_photo',
+                file_path: result.path,
+                file_name: nrcPhoto.file!.name,
+                file_size: nrcPhoto.file!.size,
+                file_url: result.url,
+                authenticity_score: nrcPhoto.validation!.authenticityScore,
+                authenticity_flags: nrcPhoto.validation!.authenticityFlags
+              })
+            });
+
+            if (!fileResponse.ok) {
+              const errorData = await fileResponse.json();
+              throw new Error(errorData.error || 'Failed to upload NRC photo');
+            }
+
+            return fileResponse.json();
+          })
         );
       }
 
@@ -214,17 +241,31 @@ const ApplyNowForm = () => {
             'applications',
             `${application.id}/grade12_results`,
             grade12Results.validation.metadata
-          ).then(result =>
-            applicationAPI.uploadFile(application.id, {
-              file_type: 'grade12_results',
-              file_path: result.path,
-              file_name: grade12Results.file!.name,
-              file_size: grade12Results.file!.size,
-              file_url: result.url,
-              authenticity_score: grade12Results.validation!.authenticityScore,
-              authenticity_flags: grade12Results.validation!.authenticityFlags
-            })
-          )
+          ).then(async result => {
+            const fileResponse = await fetch('/api/upload-application-file', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                application_id: application.id,
+                file_type: 'grade12_results',
+                file_path: result.path,
+                file_name: grade12Results.file!.name,
+                file_size: grade12Results.file!.size,
+                file_url: result.url,
+                authenticity_score: grade12Results.validation!.authenticityScore,
+                authenticity_flags: grade12Results.validation!.authenticityFlags
+              })
+            });
+
+            if (!fileResponse.ok) {
+              const errorData = await fileResponse.json();
+              throw new Error(errorData.error || 'Failed to upload Grade 12 results');
+            }
+
+            return fileResponse.json();
+          })
         );
       }
 
@@ -235,17 +276,31 @@ const ApplyNowForm = () => {
             'applications',
             `${application.id}/payment_receipt`,
             paymentReceipt.validation.metadata
-          ).then(result =>
-            applicationAPI.uploadFile(application.id, {
-              file_type: 'payment_receipt',
-              file_path: result.path,
-              file_name: paymentReceipt.file!.name,
-              file_size: paymentReceipt.file!.size,
-              file_url: result.url,
-              authenticity_score: paymentReceipt.validation!.authenticityScore,
-              authenticity_flags: paymentReceipt.validation!.authenticityFlags
-            })
-          )
+          ).then(async result => {
+            const fileResponse = await fetch('/api/upload-application-file', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                application_id: application.id,
+                file_type: 'payment_receipt',
+                file_path: result.path,
+                file_name: paymentReceipt.file!.name,
+                file_size: paymentReceipt.file!.size,
+                file_url: result.url,
+                authenticity_score: paymentReceipt.validation!.authenticityScore,
+                authenticity_flags: paymentReceipt.validation!.authenticityFlags
+              })
+            });
+
+            if (!fileResponse.ok) {
+              const errorData = await fileResponse.json();
+              throw new Error(errorData.error || 'Failed to upload payment receipt');
+            }
+
+            return fileResponse.json();
+          })
         );
       }
 
