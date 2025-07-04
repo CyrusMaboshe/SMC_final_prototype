@@ -532,6 +532,26 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
+ * Generate URL from file path for staff photos
+ */
+export async function generateStaffPhotoUrl(filePath: string): Promise<string> {
+  try {
+    // For staff photos, use signed URLs for privacy
+    const { data, error } = await supabase.storage
+      .from('staff-photos')
+      .createSignedUrl(filePath, 3600 * 24 * 7); // 7 days expiry
+
+    if (error) {
+      throw new Error(`Failed to create signed URL: ${error.message}`);
+    }
+
+    return data.signedUrl;
+  } catch (error: any) {
+    throw new Error(`Failed to generate staff photo URL: ${error.message}`);
+  }
+}
+
+/**
  * Get file type icon
  */
 export function getFileIcon(fileName: string): string {

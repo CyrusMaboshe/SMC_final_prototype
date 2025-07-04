@@ -12,6 +12,7 @@ import StudentQuizResults from '@/components/StudentQuizResults';
 import StudentAssignmentSubmission from '@/components/StudentAssignmentSubmission';
 import StudentAssignmentResults from '@/components/StudentAssignmentResults';
 import StudentInvoices from '@/components/StudentInvoices';
+import CalendarView from '@/components/CalendarView';
 
 const ChangePasswordForm = ({ user }: { user: any }) => {
   const [formData, setFormData] = useState({
@@ -1403,18 +1404,7 @@ const StudentDashboard = () => {
         return <EnrolledCoursesTab studentId={profile?.id} />;
 
       case 'calendar':
-        return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Academic Calendar & Notifications</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">📅</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Calendar Events</h3>
-              <p className="text-gray-600">Academic calendar events and notifications will appear here.</p>
-            </div>
-          </div>
-        );
+        return <CalendarView user={user} />;
 
       case 'change-password':
         return <ChangePasswordForm user={user} />;

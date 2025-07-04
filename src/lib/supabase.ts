@@ -192,6 +192,53 @@ export interface Application {
   updated_at: string;
 }
 
+export interface ApplicationFile {
+  id: string;
+  application_id: string;
+  file_type: 'nrc_photo' | 'grade12_results' | 'payment_receipt';
+  file_path: string;
+  file_name: string;
+  file_size: number;
+  file_url?: string;
+  authenticity_score: number;
+  authenticity_flags: string[];
+  requires_review: boolean;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  review_notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Staff {
+  id: string;
+  staff_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  department: string;
+  job_title: string;
+  academic_qualifications?: string;
+  specialization?: string;
+  profile_photo_path?: string;
+  profile_photo_url?: string;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StaffAuditLog {
+  id: string;
+  staff_id: string;
+  action: 'created' | 'updated' | 'deleted' | 'activated' | 'deactivated';
+  changes?: Record<string, any>;
+  performed_by: string;
+  timestamp: string;
+  notes?: string;
+}
+
 export interface Update {
   id: string;
   title: string;
@@ -407,6 +454,403 @@ export const applicationAPI = {
     
     if (error) throw error;
     return data;
+  },
+
+  // Upload application file
+  async uploadFile(applicationId: string, fileData: {
+    file_type: 'nrc_photo' | 'grade12_results' | 'payment_receipt';
+    file_path: string;
+    file_name: string;
+    file_size: number;
+    file_url?: string;
+    authenticity_score: number;
+    authenticity_flags: string[];
+  }) {
+    const requiresReview = fileData.authenticity_score < 70 || fileData.authenticity_flags.length > 0;
+
+    const { data, error } = await supabase
+      .from('application_files')
+      .insert([{
+        application_id: applicationId,
+        ...fileData,
+        requires_review: requiresReview
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get application files
+  async getFiles(applicationId: string) {
+    const { data, error } = await supabase
+      .from('application_files')
+      .select('*')
+      .eq('application_id', applicationId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get applications with files that require review (admin only)
+  async getApplicationsRequiringReview() {
+    const { data, error } = await supabase
+      .from('applications')
+      .select(`
+        *,
+        application_files!inner(*)
+      `)
+      .eq('application_files.requires_review', true)
+      .order('submitted_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Review application file (admin only)
+  async reviewFile(fileId: string, reviewData: {
+    requires_review: boolean;
+    reviewed_by: string;
+    review_notes?: string;
+  }) {
+    const { data, error } = await supabase
+      .from('application_files')
+      .update({
+        ...reviewData,
+        reviewed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', fileId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+};
+
+// API functions for staff management
+export const staffAPI = {
+  // Get all staff (admin only)
+  async getAll() {
+    try {
+      const { data, error } = await supabase
+        .from('staff')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        // If staff table doesn't exist, throw error to be handled by component
+        throw new Error('Staff table not found. Please set up the database schema.');
+      }
+
+      // Generate URLs for staff photos that are missing them
+      if (data) {
+        const { generateStaffPhotoUrl } = await import('@/utils/fileUpload');
+
+        for (const staff of data) {
+          if (staff.profile_photo_path && !staff.profile_photo_url) {
+            try {
+              staff.profile_photo_url = await generateStaffPhotoUrl(staff.profile_photo_path);
+
+              // Update the database with the generated URL
+              await supabase
+                .from('staff')
+                .update({ profile_photo_url: staff.profile_photo_url })
+                .eq('id', staff.id);
+            } catch (urlError) {
+              console.error(`Failed to generate URL for staff ${staff.id}:`, urlError);
+            }
+          }
+        }
+      }
+
+      return data;
+    } catch (error) {
+      // Re-throw the error to be handled by the component
+      throw error;
+    }
+  },
+
+  // Get staff by ID
+  async getById(staffId: string) {
+    const { data, error } = await supabase
+      .from('staff')
+      .select('*')
+      .eq('id', staffId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Create new staff member (admin only)
+  async create(staffData: {
+    staff_id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone?: string;
+    department: string;
+    job_title: string;
+    academic_qualifications?: string;
+    specialization?: string;
+    profile_photo_path?: string;
+    profile_photo_url?: string;
+    created_by: string;
+  }) {
+    const { data, error } = await supabase
+      .from('staff')
+      .insert([staffData])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Log the creation
+    await this.logAction(data.id, 'created', null, staffData.created_by, 'Staff member created');
+
+    return data;
+  },
+
+  // Update staff member (admin only)
+  async update(staffId: string, updates: Partial<Staff>, updatedBy: string) {
+    // Get current data for audit log
+    const currentData = await this.getById(staffId);
+
+    const { data, error } = await supabase
+      .from('staff')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', staffId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Log the update
+    await this.logAction(staffId, 'updated', { before: currentData, after: updates }, updatedBy, 'Staff member updated');
+
+    return data;
+  },
+
+  // Delete staff member (admin only)
+  async delete(staffId: string, deletedBy: string) {
+    // Get current data for audit log
+    const currentData = await this.getById(staffId);
+
+    const { error } = await supabase
+      .from('staff')
+      .delete()
+      .eq('id', staffId);
+
+    if (error) throw error;
+
+    // Log the deletion
+    await this.logAction(staffId, 'deleted', { deleted_data: currentData }, deletedBy, 'Staff member deleted');
+  },
+
+  // Search and filter staff
+  async search(filters: {
+    searchTerm?: string;
+    department?: string;
+    jobTitle?: string;
+    isActive?: boolean;
+  }) {
+    let query = supabase
+      .from('staff')
+      .select('*');
+
+    if (filters.searchTerm) {
+      query = query.or(`first_name.ilike.%${filters.searchTerm}%,last_name.ilike.%${filters.searchTerm}%,email.ilike.%${filters.searchTerm}%`);
+    }
+
+    if (filters.department) {
+      query = query.eq('department', filters.department);
+    }
+
+    if (filters.jobTitle) {
+      query = query.eq('job_title', filters.jobTitle);
+    }
+
+    if (filters.isActive !== undefined) {
+      query = query.eq('is_active', filters.isActive);
+    }
+
+    query = query.order('created_at', { ascending: false });
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Toggle staff active status (admin only)
+  async toggleActiveStatus(staffId: string, isActive: boolean, updatedBy: string) {
+    const { data, error } = await supabase
+      .from('staff')
+      .update({
+        is_active: isActive,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', staffId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Log the status change
+    await this.logAction(
+      staffId,
+      isActive ? 'activated' : 'deactivated',
+      { status_change: { from: !isActive, to: isActive } },
+      updatedBy,
+      `Staff member ${isActive ? 'activated' : 'deactivated'}`
+    );
+
+    return data;
+  },
+
+  // Update staff photo URLs for existing staff with photos but missing URLs
+  async updateMissingPhotoUrls() {
+    try {
+      // Get staff members who have photo paths but missing URLs
+      const { data: staffWithPhotos, error } = await supabase
+        .from('staff')
+        .select('id, profile_photo_path, profile_photo_url')
+        .not('profile_photo_path', 'is', null)
+        .is('profile_photo_url', null);
+
+      if (error) throw error;
+
+      if (!staffWithPhotos || staffWithPhotos.length === 0) {
+        return { updated: 0, message: 'No staff members need photo URL updates' };
+      }
+
+      let updatedCount = 0;
+      const { generateStaffPhotoUrl } = await import('@/utils/fileUpload');
+
+      for (const staff of staffWithPhotos) {
+        try {
+          // Generate signed URL for the photo
+          const photoUrl = await generateStaffPhotoUrl(staff.profile_photo_path);
+
+          // Update the staff record with the URL
+          const { error: updateError } = await supabase
+            .from('staff')
+            .update({ profile_photo_url: photoUrl })
+            .eq('id', staff.id);
+
+          if (!updateError) {
+            updatedCount++;
+          } else {
+            console.error(`Failed to update photo URL for staff ${staff.id}:`, updateError);
+          }
+        } catch (urlError) {
+          console.error(`Failed to generate URL for staff ${staff.id}:`, urlError);
+        }
+      }
+
+      return {
+        updated: updatedCount,
+        total: staffWithPhotos.length,
+        message: `Updated ${updatedCount} out of ${staffWithPhotos.length} staff photo URLs`
+      };
+    } catch (error) {
+      console.error('Failed to update missing photo URLs:', error);
+      throw error;
+    }
+  },
+
+  // Log staff actions for audit trail
+  async logAction(
+    staffId: string,
+    action: 'created' | 'updated' | 'deleted' | 'activated' | 'deactivated',
+    changes: Record<string, any> | null,
+    performedBy: string,
+    notes?: string
+  ) {
+    const { error } = await supabase
+      .from('staff_audit_logs')
+      .insert([{
+        staff_id: staffId,
+        action,
+        changes,
+        performed_by: performedBy,
+        timestamp: new Date().toISOString(),
+        notes
+      }]);
+
+    if (error) {
+      console.error('Failed to log staff action:', error);
+      // Don't throw error for audit log failures to avoid breaking main operations
+    }
+  },
+
+  // Get audit logs for a staff member (admin only)
+  async getAuditLogs(staffId: string) {
+    const { data, error } = await supabase
+      .from('staff_audit_logs')
+      .select('*')
+      .eq('staff_id', staffId)
+      .order('timestamp', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get all departments (for filtering)
+  async getDepartments() {
+    try {
+      const { data, error } = await supabase
+        .from('staff')
+        .select('department')
+        .not('department', 'is', null);
+
+      if (error) {
+        // If staff table doesn't exist, return fallback departments
+        return [
+          { name: 'Nursing' },
+          { name: 'Administration' },
+          { name: 'Academic' },
+          { name: 'Clinical' },
+          { name: 'Support' },
+          { name: 'Management' }
+        ];
+      }
+
+      // Return unique departments in the expected format
+      const departments = [...new Set(data.map(item => item.department))];
+      return departments.sort().map(name => ({ name }));
+    } catch (error) {
+      // Return fallback departments if any error occurs
+      return [
+        { name: 'Nursing' },
+        { name: 'Administration' },
+        { name: 'Academic' },
+        { name: 'Clinical' },
+        { name: 'Support' },
+        { name: 'Management' }
+      ];
+    }
+  },
+
+  // Get all job titles (for filtering)
+  async getJobTitles() {
+    const { data, error } = await supabase
+      .from('staff')
+      .select('job_title')
+      .not('job_title', 'is', null);
+
+    if (error) throw error;
+
+    // Return unique job titles
+    const jobTitles = [...new Set(data.map(item => item.job_title))];
+    return jobTitles.sort();
   }
 };
 
@@ -2604,6 +3048,223 @@ export const studentAPI = {
       .select('*')
       .eq('is_active', true)
       .order('start_date', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+};
+
+// Calendar Event Types
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string | null;
+  event_type: 'academic' | 'exam' | 'assignment' | 'meeting' | 'holiday' | 'announcement';
+  start_date: string;
+  end_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  location?: string | null;
+  course_id?: string | null;
+  lecturer_id?: string | null;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Comprehensive Calendar API
+export const calendarAPI = {
+  // Get all calendar events
+  async getAllEvents() {
+    const { data, error } = await supabase
+      .from('academic_calendar')
+      .select(`
+        *,
+        courses(course_code, course_name),
+        lecturers(first_name, last_name)
+      `)
+      .eq('is_active', true)
+      .order('start_date', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get events by date range
+  async getEventsByDateRange(startDate: string, endDate: string) {
+    const { data, error } = await supabase
+      .from('academic_calendar')
+      .select(`
+        *,
+        courses(course_code, course_name),
+        lecturers(first_name, last_name)
+      `)
+      .eq('is_active', true)
+      .gte('start_date', startDate)
+      .lte('start_date', endDate)
+      .order('start_date', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get events by type
+  async getEventsByType(eventType: string) {
+    const { data, error } = await supabase
+      .from('academic_calendar')
+      .select(`
+        *,
+        courses(course_code, course_name),
+        lecturers(first_name, last_name)
+      `)
+      .eq('is_active', true)
+      .eq('event_type', eventType)
+      .order('start_date', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get upcoming events (next 30 days)
+  async getUpcomingEvents(limit: number = 10) {
+    const today = new Date().toISOString().split('T')[0];
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 30);
+    const future = futureDate.toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('academic_calendar')
+      .select(`
+        *,
+        courses(course_code, course_name),
+        lecturers(first_name, last_name)
+      `)
+      .eq('is_active', true)
+      .gte('start_date', today)
+      .lte('start_date', future)
+      .order('start_date', { ascending: true })
+      .limit(limit);
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Create calendar event (admin only)
+  async createEvent(eventData: {
+    title: string;
+    description?: string | null;
+    event_type: string;
+    start_date: string;
+    end_date?: string | null;
+    start_time?: string | null;
+    end_time?: string | null;
+    location?: string | null;
+    course_id?: string | null;
+    lecturer_id?: string | null;
+    created_by: string;
+  }) {
+    // Clean the data to ensure proper null handling
+    const cleanedData = {
+      title: eventData.title,
+      description: eventData.description || null,
+      event_type: eventData.event_type,
+      start_date: eventData.start_date,
+      end_date: eventData.end_date || null,
+      start_time: eventData.start_time || null,
+      end_time: eventData.end_time || null,
+      location: eventData.location || null,
+      course_id: eventData.course_id || null,
+      lecturer_id: eventData.lecturer_id || null,
+      created_by: eventData.created_by,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('academic_calendar')
+      .insert([cleanedData])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Update calendar event (admin only)
+  async updateEvent(eventId: string, eventData: Partial<CalendarEvent>) {
+    // Clean the data to ensure proper null handling
+    const cleanedData: any = {
+      updated_at: new Date().toISOString()
+    };
+
+    // Only include fields that are provided, converting empty strings to null
+    Object.keys(eventData).forEach(key => {
+      if (key !== 'id' && key !== 'created_at' && key !== 'updated_at') {
+        const value = (eventData as any)[key];
+        cleanedData[key] = value === '' ? null : value;
+      }
+    });
+
+    const { data, error } = await supabase
+      .from('academic_calendar')
+      .update(cleanedData)
+      .eq('id', eventId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Delete calendar event (admin only)
+  async deleteEvent(eventId: string) {
+    const { error } = await supabase
+      .from('academic_calendar')
+      .update({ is_active: false })
+      .eq('id', eventId);
+
+    if (error) throw error;
+  },
+
+  // Subscribe to real-time calendar updates
+  subscribeToEvents(callback: (payload: any) => void) {
+    return supabase
+      .channel('calendar-events')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'academic_calendar'
+        },
+        callback
+      )
+      .subscribe();
+  },
+
+  // Get events for a specific month
+  async getEventsForMonth(year: number, month: number) {
+    const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
+    const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
+    return this.getEventsByDateRange(startDate, endDate);
+  },
+
+  // Get today's events
+  async getTodaysEvents() {
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('academic_calendar')
+      .select(`
+        *,
+        courses(course_code, course_name),
+        lecturers(first_name, last_name)
+      `)
+      .eq('is_active', true)
+      .eq('start_date', today)
+      .order('start_time', { ascending: true });
 
     if (error) throw error;
     return data;

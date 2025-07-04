@@ -7,6 +7,7 @@ import LoginSection from '@/components/LoginSection';
 import ApplyNowForm from '@/components/ApplyNowForm';
 import UpdatesSection from '@/components/UpdatesSection';
 import DocumentsSection from '@/components/DocumentsSection';
+import StaffsSection from '@/components/StaffsSection';
 import { TabProvider, useTab } from '@/contexts/TabContext';
 import { siteSettingsAPI } from '@/lib/supabase';
 
@@ -41,6 +42,8 @@ const MainContent = () => {
         return <UpdatesSection />;
       case 'documents':
         return <DocumentsSection />;
+      case 'staffs':
+        return <StaffsSection />;
       case 'home':
       default:
         return (
@@ -149,6 +152,23 @@ const MainContent = () => {
                       <p className="text-gray-600 mb-4">Access important forms, handbooks, and academic resources</p>
                       <div className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-full font-medium transition-all duration-300 transform group-hover:scale-105 inline-block">
                         Browse Documents
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Staffs Card */}
+                  <div
+                    onClick={() => setActiveTab('staffs')}
+                    className="group bg-gradient-to-br from-purple-50 to-purple-100 p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border border-purple-200 cursor-pointer"
+                  >
+                    <div className="text-center">
+                      <div className="w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300">
+                        <span className="text-2xl">👥</span>
+                      </div>
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">Our Staff</h3>
+                      <p className="text-gray-600 mb-4">Meet our dedicated team of healthcare professionals and educators</p>
+                      <div className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-full font-medium transition-all duration-300 transform group-hover:scale-105 inline-block">
+                        View Staff Directory
                       </div>
                     </div>
                   </div>

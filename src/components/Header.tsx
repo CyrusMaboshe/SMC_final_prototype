@@ -63,6 +63,17 @@ const Header = () => {
               }`}></span>
             </button>
             <button
+              onClick={() => setActiveTab('staffs')}
+              className={`text-white hover:text-blue-200 transition-colors duration-300 font-medium relative group ${
+                activeTab === 'staffs' ? 'text-blue-200' : ''
+              }`}
+            >
+              Staffs
+              <span className={`absolute -bottom-1 left-0 h-0.5 bg-blue-200 transition-all duration-300 ${
+                activeTab === 'staffs' ? 'w-full' : 'w-0 group-hover:w-full'
+              }`}></span>
+            </button>
+            <button
               onClick={() => setActiveTab('apply')}
               className={`px-6 py-2 rounded-full font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl ${
                 activeTab === 'apply'
@@ -142,6 +153,19 @@ const Header = () => {
               }`}
             >
               Documents
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('staffs');
+                setIsMenuOpen(false);
+              }}
+              className={`block w-full text-left px-3 py-2 rounded-md transition-all duration-300 ${
+                activeTab === 'staffs'
+                  ? 'text-blue-200 bg-blue-700'
+                  : 'text-white hover:text-blue-200 hover:bg-blue-700'
+              }`}
+            >
+              Staffs
             </button>
             <button
               onClick={() => {

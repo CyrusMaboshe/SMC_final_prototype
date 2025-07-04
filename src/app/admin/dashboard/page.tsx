@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, adminAPI, applicationAPI } from '@/lib/supabase';
+import CalendarManagement from '@/components/admin/CalendarManagement';
 
 const AdminDashboard = () => {
   const [user, setUser] = useState(null);
@@ -116,6 +117,26 @@ const AdminDashboard = () => {
             >
               <span className="mr-3">👨‍🏫</span>
               Manage Lecturers
+            </button>
+
+            <button
+              onClick={() => router.push('/admin/staff')}
+              className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-700 hover:bg-gray-100"
+            >
+              <span className="mr-3">👥</span>
+              Manage Staff
+            </button>
+
+            <button
+              onClick={() => setActiveTab('calendar')}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors mb-1 ${
+                activeTab === 'calendar'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <span className="mr-3">📅</span>
+              Calendar Management
             </button>
 
             <button
@@ -259,6 +280,10 @@ const AdminDashboard = () => {
                   </div>
                 </div>
               </div>
+            )}
+
+            {activeTab === 'calendar' && (
+              <CalendarManagement user={user} />
             )}
 
             {activeTab === 'system' && (
