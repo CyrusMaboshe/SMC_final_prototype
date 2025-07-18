@@ -13,10 +13,8 @@ const nextConfig: NextConfig = {
   },
   // Remove standalone output for Vercel (not needed)
   // output: 'standalone',
-  // External packages for server components
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
-  },
+  // External packages for server components (Next.js 15+ syntax)
+  serverExternalPackages: ['@supabase/supabase-js'],
   // Webpack configuration to handle Supabase properly
   webpack: (config, { isServer }) => {
     if (!isServer) {
