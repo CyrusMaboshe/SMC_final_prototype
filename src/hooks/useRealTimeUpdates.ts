@@ -122,21 +122,6 @@ export const useStudentRealTimeUpdates = (studentId: string, onUpdate: () => voi
       )
       .subscribe();
 
-    // Subscribe to invoices
-    const invoiceChannel = supabase
-      .channel('invoices_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'invoices',
-          filter: `student_id=eq.${studentId}`
-        },
-        onUpdate
-      )
-      .subscribe();
-
     // Subscribe to financial records
     const financialChannel = supabase
       .channel('financial_records_changes')
@@ -167,7 +152,7 @@ export const useStudentRealTimeUpdates = (studentId: string, onUpdate: () => voi
       )
       .subscribe();
 
-    subscriptions.push(caChannel, examChannel, quizChannel, assignmentChannel, enrollmentChannel, invoiceChannel, financialChannel, paymentsChannel);
+    subscriptions.push(caChannel, examChannel, quizChannel, assignmentChannel, enrollmentChannel, financialChannel, paymentsChannel);
 
     return () => {
       subscriptions.forEach(subscription => {
@@ -206,7 +191,10 @@ export const useStudentFinancialRealTimeUpdates = (studentNumber: string, onUpda
             filter: `student_id=eq.${student.id}`
           },
           (payload) => {
-            console.log('Financial record update:', payload);
+            console.log('💰 Student financial record real-time update:', payload);
+            console.log('Student ID:', student.id);
+            console.log('Event type:', payload.eventType);
+            console.log('Updated record:', payload.new);
             onUpdate();
           }
         )
@@ -224,31 +212,36 @@ export const useStudentFinancialRealTimeUpdates = (studentNumber: string, onUpda
             filter: `student_id=eq.${student.id}`
           },
           (payload) => {
-            console.log('Payment update:', payload);
+            console.log('💳 Student payment real-time update:', payload);
+            console.log('Student ID:', student.id);
+            console.log('Event type:', payload.eventType);
+            console.log('New payment:', payload.new);
             onUpdate();
           }
         )
         .subscribe();
 
-      // Subscribe to invoices for this student
-      const invoicesChannel = supabase
-        .channel('student_invoices_changes')
+      // Subscribe to account transactions that affect this student's financial records
+      const accountTransactionsChannel = supabase
+        .channel('student_account_transactions_changes')
         .on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
-            table: 'invoices',
-            filter: `student_id=eq.${student.id}`
+            table: 'account_transactions',
+            filter: `reference_type=eq.fee_record`
           },
           (payload) => {
-            console.log('Invoice update:', payload);
+            console.log('Student account transaction real-time update:', payload);
+            // Only trigger update if this transaction relates to the current student
+            // The trigger will handle updating the financial_records table
             onUpdate();
           }
         )
         .subscribe();
 
-      subscriptions.push(financialChannel, paymentsChannel, invoicesChannel);
+      subscriptions.push(financialChannel, paymentsChannel, accountTransactionsChannel);
     };
 
     getStudentUUID();
@@ -261,12 +254,12 @@ export const useStudentFinancialRealTimeUpdates = (studentNumber: string, onUpda
   }, [studentNumber, onUpdate]);
 };
 
-// Hook for accountant real-time updates
+// Hook for accountant real-time updates with enhanced account transaction tracking
 export function useAccountantRealTimeUpdates(onUpdate: () => void) {
   useEffect(() => {
     const subscriptions: any[] = [];
 
-    // Subscribe to all financial records changes
+    // Subscribe to all financial records changes with detailed logging
     const financialChannel = supabase
       .channel('accountant_financial_changes')
       .on(
@@ -276,11 +269,17 @@ export function useAccountantRealTimeUpdates(onUpdate: () => void) {
           schema: 'public',
           table: 'financial_records'
         },
-        onUpdate
+        (payload) => {
+          console.log('🔄 Financial records real-time update:', payload);
+          console.log('Event type:', payload.eventType);
+          console.log('New record:', payload.new);
+          console.log('Old record:', payload.old);
+          onUpdate();
+        }
       )
       .subscribe();
 
-    // Subscribe to all payments changes
+    // Subscribe to all payments changes with detailed logging
     const paymentsChannel = supabase
       .channel('accountant_payments_changes')
       .on(
@@ -290,27 +289,138 @@ export function useAccountantRealTimeUpdates(onUpdate: () => void) {
           schema: 'public',
           table: 'payments'
         },
-        onUpdate
+        (payload) => {
+          console.log('💰 Payments real-time update:', payload);
+          console.log('Event type:', payload.eventType);
+          console.log('New payment:', payload.new);
+          console.log('Old payment:', payload.old);
+          onUpdate();
+        }
       )
       .subscribe();
 
-    // Subscribe to all invoices changes
-    const invoicesChannel = supabase
-      .channel('accountant_invoices_changes')
+    // Subscribe to account transactions for real-time accounting updates
+    const accountTransactionsChannel = supabase
+      .channel('accountant_account_transactions_changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'invoices'
+          table: 'account_transactions'
         },
-        onUpdate
+        (payload) => {
+          console.log('📊 Account transactions real-time update:', payload);
+          console.log('Event type:', payload.eventType);
+          console.log('New transaction:', payload.new);
+          onUpdate();
+        }
       )
       .subscribe();
 
-    subscriptions.push(financialChannel, paymentsChannel, invoicesChannel);
+    // Subscribe to students table changes for accountant dashboard
+    const studentsChannel = supabase
+      .channel('accountant_students_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'students'
+        },
+        (payload) => {
+          console.log('👥 Students real-time update:', payload);
+          onUpdate();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to transaction entries for real-time balance updates
+    const transactionEntriesChannel = supabase
+      .channel('accountant_transaction_entries_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transaction_entries'
+        },
+        (payload) => {
+          console.log('Transaction entries real-time update:', payload);
+          onUpdate();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to accounts for real-time balance updates
+    const accountsChannel = supabase
+      .channel('accountant_accounts_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'accounts'
+        },
+        (payload) => {
+          console.log('Accounts real-time update:', payload);
+          onUpdate();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to audit logs for real-time audit tracking
+    const auditLogsChannel = supabase
+      .channel('accountant_audit_logs_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'audit_logs'
+        },
+        (payload) => {
+          console.log('Audit logs real-time update:', payload);
+          onUpdate();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to ledger adjustments for real-time balance updates
+    const ledgerAdjustmentsChannel = supabase
+      .channel('accountant_ledger_adjustments_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ledger_adjustments'
+        },
+        (payload) => {
+          console.log('⚖️ Ledger adjustments real-time update:', payload);
+          console.log('Event type:', payload.eventType);
+          console.log('New adjustment:', payload.new);
+          console.log('Old adjustment:', payload.old);
+          onUpdate();
+        }
+      )
+      .subscribe();
+
+    subscriptions.push(
+      financialChannel,
+      paymentsChannel,
+      accountTransactionsChannel,
+      studentsChannel,
+      transactionEntriesChannel,
+      accountsChannel,
+      auditLogsChannel,
+      ledgerAdjustmentsChannel
+    );
+
+    console.log('🚀 Accountant real-time subscriptions established:', subscriptions.length);
 
     return () => {
+      console.log('🔌 Cleaning up accountant real-time subscriptions');
       subscriptions.forEach(subscription => {
         supabase.removeChannel(subscription);
       });

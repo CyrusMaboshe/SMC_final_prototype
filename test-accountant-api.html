@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Accountant API Functions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+            color: #856404;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+            max-height: 300px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Accountant API Functions</h1>
+        <p>This tool tests all the accountant API functions to ensure they're working correctly for the history display.</p>
+        
+        <div class="grid">
+            <button onclick="testGetAllPaymentApprovals()">Test Payment Approvals</button>
+            <button onclick="testGetAllSemesterRegistrations()">Test Semester Registrations</button>
+            <button onclick="testGetAllSemesterPeriods()">Test Semester Periods</button>
+            <button onclick="testGetAccessControlLogs()">Test Access Control Logs</button>
+            <button onclick="testGetAllStudents()">Test Get All Students</button>
+            <button onclick="testAllFunctions()">Test All Functions</button>
+        </div>
+        
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Initialize Supabase client
+        const supabaseUrl = 'https://tigknjhplktzqzradmkd.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpZ2tuamhwbGt0enF6cmFkbWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTg5NTksImV4cCI6MjA2NjAzNDk1OX0.GhMpUkea-rEqqIKWZv9q7l_MIeZVK57Tj5oAlKC-4tY';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        function addResult(title, status, message, data = null) {
+            const resultsDiv = document.getElementById('results');
+            const testDiv = document.createElement('div');
+            testDiv.className = `test-section ${status}`;
+            
+            let content = `<h3>${title}</h3><p>${message}</p>`;
+            if (data) {
+                content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            testDiv.innerHTML = content;
+            resultsDiv.appendChild(testDiv);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testGetAllPaymentApprovals() {
+            addResult('Payment Approvals API', 'loading', 'Testing getAllPaymentApprovals...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('payment_approvals')
+                    .select(`
+                        *,
+                        students(student_id, first_name, last_name, email),
+                        accountants(full_name)
+                    `)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                const summary = {
+                    total: data.length,
+                    approved: data.filter(p => p.approval_status === 'approved').length,
+                    pending: data.filter(p => p.approval_status === 'pending').length,
+                    rejected: data.filter(p => p.approval_status === 'rejected').length,
+                    sample: data.slice(0, 3)
+                };
+
+                addResult('Payment Approvals API', 'success', `Found ${data.length} payment approval records`, summary);
+
+            } catch (error) {
+                addResult('Payment Approvals API', 'error', `Error: ${error.message}`, error);
+            }
+        }
+
+        async function testGetAllSemesterRegistrations() {
+            addResult('Semester Registrations API', 'loading', 'Testing getAllSemesterRegistrations...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('student_semester_registrations')
+                    .select(`
+                        *,
+                        students(student_id, first_name, last_name, email),
+                        semester_periods(semester_name, academic_year, semester_number),
+                        payment_approvals(id, amount_paid, payment_reference, approval_status)
+                    `)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                const summary = {
+                    total: data.length,
+                    approved: data.filter(r => r.registration_status === 'approved').length,
+                    pending: data.filter(r => r.registration_status === 'pending').length,
+                    rejected: data.filter(r => r.registration_status === 'rejected').length,
+                    sample: data.slice(0, 3)
+                };
+
+                addResult('Semester Registrations API', 'success', `Found ${data.length} semester registration records`, summary);
+
+            } catch (error) {
+                addResult('Semester Registrations API', 'error', `Error: ${error.message}`, error);
+            }
+        }
+
+        async function testGetAllSemesterPeriods() {
+            addResult('Semester Periods API', 'loading', 'Testing getAllSemesterPeriods...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('semester_periods')
+                    .select(`
+                        *,
+                        accountants(full_name)
+                    `)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                const summary = {
+                    total: data.length,
+                    active: data.filter(s => s.is_active).length,
+                    registration_open: data.filter(s => s.is_registration_open).length,
+                    sample: data.slice(0, 3)
+                };
+
+                addResult('Semester Periods API', 'success', `Found ${data.length} semester period records`, summary);
+
+            } catch (error) {
+                addResult('Semester Periods API', 'error', `Error: ${error.message}`, error);
+            }
+        }
+
+        async function testGetAccessControlLogs() {
+            addResult('Access Control Logs API', 'loading', 'Testing getAccessControlLogs...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('access_control_logs')
+                    .select(`
+                        *,
+                        students(student_id, first_name, last_name, email)
+                    `)
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+
+                if (error) throw error;
+
+                const actionTypes = [...new Set(data.map(log => log.action_type))];
+                const summary = {
+                    total: data.length,
+                    action_types: actionTypes,
+                    recent_24h: data.filter(log => {
+                        const logDate = new Date(log.created_at);
+                        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                        return logDate > yesterday;
+                    }).length,
+                    sample: data.slice(0, 5)
+                };
+
+                addResult('Access Control Logs API', 'success', `Found ${data.length} access control log records (showing last 50)`, summary);
+
+            } catch (error) {
+                addResult('Access Control Logs API', 'error', `Error: ${error.message}`, error);
+            }
+        }
+
+        async function testGetAllStudents() {
+            addResult('Students API', 'loading', 'Testing getAllStudents...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('students')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                const summary = {
+                    total: data.length,
+                    active: data.filter(s => s.status === 'active').length,
+                    programs: [...new Set(data.map(s => s.program))],
+                    sample: data.slice(0, 3).map(s => ({
+                        student_id: s.student_id,
+                        name: `${s.first_name} ${s.last_name}`,
+                        program: s.program,
+                        status: s.status
+                    }))
+                };
+
+                addResult('Students API', 'success', `Found ${data.length} student records`, summary);
+
+            } catch (error) {
+                addResult('Students API', 'error', `Error: ${error.message}`, error);
+            }
+        }
+
+        async function testAllFunctions() {
+            clearResults();
+            addResult('All Functions Test', 'loading', 'Testing all accountant API functions...');
+            
+            await testGetAllPaymentApprovals();
+            await testGetAllSemesterRegistrations();
+            await testGetAllSemesterPeriods();
+            await testGetAccessControlLogs();
+            await testGetAllStudents();
+            
+            addResult('All Functions Test', 'success', 'All API function tests completed! Check individual results above.');
+        }
+
+        // Auto-run tests on page load
+        window.addEventListener('load', () => {
+            setTimeout(testAllFunctions, 1000);
+        });
+    </script>
+</body>
+</html>

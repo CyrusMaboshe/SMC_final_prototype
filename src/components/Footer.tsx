@@ -64,10 +64,10 @@ const Footer = () => {
 
   if (loading) {
     return (
-      <footer className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
+      <footer className="bg-gradient-dark text-foreground">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-blue"></div>
           </div>
         </div>
       </footer>
@@ -75,51 +75,57 @@ const Footer = () => {
   }
 
   return (
-    <footer className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 text-white">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <footer className="bg-gray-900 text-white relative">
+      <div className="bg-blue-600 h-1"></div>
+
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* College Information */}
-          <div className="space-y-4">
+          <div className="space-y-4 animate-fadeInUp">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-                <span className="text-blue-900 font-bold text-lg">SMC</span>
+              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-lg">SMC</span>
               </div>
               <div>
-                <h3 className="text-xl font-bold">{footerSettings.college_name || 'Sancta Maria College'}</h3>
-                <p className="text-blue-200 text-sm">{footerSettings.college_subtitle || 'of Nursing and Midwifery'}</p>
+                <h3 className="text-xl font-bold text-white">
+                  {footerSettings.college_name || 'Sancta Maria College'}
+                </h3>
+                <p className="text-gray-300 text-sm">{footerSettings.college_subtitle || 'of Nursing and Midwifery'}</p>
               </div>
             </div>
-            <p className="text-blue-200 text-sm leading-relaxed">
+            <p className="text-gray-300 text-sm leading-relaxed">
               {footerSettings.college_description || 'Excellence in nursing education, compassionate care, and professional development for future healthcare leaders.'}
             </p>
           </div>
 
           {/* Quick Links */}
           <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-white">Quick Links</h4>
+            <h4 className="text-lg font-semibold text-white">
+              Quick Links
+            </h4>
             <ul className="space-y-2">
               <li>
-                <Link href="#home" className="text-blue-200 hover:text-white transition-colors duration-300 text-sm">
+                <Link href="#home" className="text-gray-300 hover:text-white transition-colors duration-300 text-sm">
                   Home
                 </Link>
               </li>
               <li>
-                <Link href="#apply" className="text-blue-200 hover:text-white transition-colors duration-300 text-sm">
+                <Link href="#apply" className="text-gray-300 hover:text-white transition-colors duration-300 text-sm">
                   Apply Now
                 </Link>
               </li>
               <li>
-                <Link href="#updates" className="text-blue-200 hover:text-white transition-colors duration-300 text-sm">
+                <Link href="#updates" className="text-gray-300 hover:text-white transition-colors duration-200 text-sm">
                   Updates
                 </Link>
               </li>
               <li>
-                <Link href="#documents" className="text-blue-200 hover:text-white transition-colors duration-300 text-sm">
+                <Link href="#documents" className="text-white/70 hover:text-neon-cyan transition-all duration-300 text-sm hover:translate-x-1 inline-block">
                   Documents
                 </Link>
               </li>
               <li>
-                <Link href="#login" className="text-blue-200 hover:text-white transition-colors duration-300 text-sm">
+                <Link href="#login" className="text-white/70 hover:text-neon-cyan transition-all duration-300 text-sm hover:translate-x-1 inline-block">
                   Student Login
                 </Link>
               </li>
@@ -171,16 +177,17 @@ const Footer = () => {
         </div>
 
         {/* Bottom Section */}
-        <div className="border-t border-blue-700 mt-8 pt-8">
-          <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-            <div className="text-blue-200 text-sm">
+        <div className="border-t border-neon-cyan/30 mt-8 pt-8 relative">
+          <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-cyber opacity-60"></div>
+          <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0 animate-fade-in-up" style={{animationDelay: '0.4s'}}>
+            <div className="text-white/70 text-sm">
               {footerSettings.copyright_text || '© 2024 Sancta Maria College of Nursing and Midwifery. All rights reserved.'}
             </div>
             <div className="flex space-x-6">
-              <Link href={footerSettings.privacy_policy_link || '#privacy'} className="text-blue-200 hover:text-white transition-colors duration-300 text-sm">
+              <Link href={footerSettings.privacy_policy_link || '#privacy'} className="text-white/70 hover:text-neon-cyan transition-all duration-300 text-sm hover:translate-y-[-1px]">
                 Privacy Policy
               </Link>
-              <Link href={footerSettings.terms_service_link || '#terms'} className="text-blue-200 hover:text-white transition-colors duration-300 text-sm">
+              <Link href={footerSettings.terms_service_link || '#terms'} className="text-white/70 hover:text-neon-cyan transition-all duration-300 text-sm hover:translate-y-[-1px]">
                 Terms of Service
               </Link>
               <Link href={footerSettings.accessibility_link || '#accessibility'} className="text-blue-200 hover:text-white transition-colors duration-300 text-sm">

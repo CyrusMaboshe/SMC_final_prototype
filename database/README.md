@@ -1,10 +1,11 @@
 # Database Schema Setup
 
-This directory contains the database schema files for the Staff Management System and Application File Upload features.
+This directory contains the database schema files for the Staff Management System, Application File Upload features, and Financial Management System.
 
 ## Files
 
 - `staff_management_schema.sql` - Complete database schema for staff management and application file uploads
+- `financial_schema.sql` - Complete database schema for financial records and payment management
 
 ## Setup Instructions
 

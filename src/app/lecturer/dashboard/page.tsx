@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, LecturerProfile, supabase, lecturerAPI, adminAPI } from '@/lib/supabase';
 import { useRealTimeUpdates } from '@/hooks/useRealTimeUpdates';
-import QuizManager from '@/components/QuizManager';
-import QuizResultsAnalytics from '@/components/QuizResultsAnalytics';
-import AssignmentManager from '@/components/AssignmentManager';
-import EnhancedQuizDashboard from '@/components/EnhancedQuizDashboard';
+import LazyComponentWrapper, { TableSkeleton, CardSkeleton, FormSkeleton } from '@/components/LazyComponentWrapper';
+
+// Lazy load heavy components
+const QuizManager = lazy(() => import('@/components/QuizManager'));
+const QuizResultsAnalytics = lazy(() => import('@/components/QuizResultsAnalytics'));
+const AssignmentManager = lazy(() => import('@/components/AssignmentManager'));
+const EnhancedQuizDashboard = lazy(() => import('@/components/EnhancedQuizDashboard'));
 
 // CA Results Manager Component
 const CAResultsManager = ({ profile, courses }: { profile: any, courses: any[] }) => {
@@ -1213,6 +1216,200 @@ const ProfessionalResultsTable = ({ results, academicYear, semester }: {
   );
 };
 
+// Student Enrollment Modal Component
+const StudentEnrollmentModal = ({
+  course,
+  students,
+  onClose,
+  onEnroll,
+  isLoading
+}: {
+  course: any;
+  students: any[];
+  onClose: () => void;
+  onEnroll: (studentId: string, courseId: string) => void;
+  isLoading: boolean;
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+
+  // Filter students who are not already enrolled in this course
+  const availableStudents = students.filter(student => {
+    const isAlreadyEnrolled = course.course_enrollments?.some(
+      (enrollment: any) => enrollment.student_id === student.id
+    );
+    const matchesSearch = searchTerm === '' ||
+      student.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.student_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.email.toLowerCase().includes(searchTerm.toLowerCase());
+
+    return !isAlreadyEnrolled && matchesSearch;
+  });
+
+  const handleStudentToggle = (studentId: string) => {
+    setSelectedStudents(prev =>
+      prev.includes(studentId)
+        ? prev.filter(id => id !== studentId)
+        : [...prev, studentId]
+    );
+  };
+
+  const handleEnrollSelected = async () => {
+    for (const studentId of selectedStudents) {
+      await onEnroll(studentId, course.id);
+    }
+    setSelectedStudents([]);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="bg-blue-600 text-white p-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-bold">Enroll Students</h2>
+              <p className="text-blue-100 mt-1">
+                Course: {course.course_code} - {course.course_name}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-white hover:text-gray-200 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {/* Search Bar */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Search Students
+            </label>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by name, student ID, or email..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* Selected Students Count */}
+          {selectedStudents.length > 0 && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800">
+                {selectedStudents.length} student(s) selected for enrollment
+              </p>
+            </div>
+          )}
+
+          {/* Students List */}
+          <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+            {availableStudents.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <span className="text-lg">👥</span>
+                </div>
+                <p className="text-gray-500">
+                  {searchTerm ? 'No students found matching your search.' : 'All students are already enrolled in this course.'}
+                </p>
+              </div>
+            ) : (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <input
+                        type="checkbox"
+                        checked={selectedStudents.length === availableStudents.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedStudents(availableStudents.map(s => s.id));
+                          } else {
+                            setSelectedStudents([]);
+                          }
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Student ID
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Email
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Program
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {availableStudents.map((student) => (
+                    <tr key={student.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedStudents.includes(student.id)}
+                          onChange={() => handleStudentToggle(student.id)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {student.student_id}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {student.first_name} {student.last_name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {student.email}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {student.program}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 px-6 py-4 flex justify-between items-center">
+          <div className="text-sm text-gray-600">
+            {availableStudents.length} student(s) available for enrollment
+          </div>
+          <div className="flex space-x-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleEnrollSelected}
+              disabled={selectedStudents.length === 0 || isLoading}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg font-medium transition-colors"
+            >
+              {isLoading ? 'Enrolling...' : `Enroll ${selectedStudents.length} Student(s)`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const LecturerDashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<LecturerProfile | null>(null);
@@ -1338,7 +1535,8 @@ const LecturerDashboard = () => {
 
   const fetchStudents = async () => {
     try {
-      const data = await lecturerAPI.getAllStudents();
+      // For enrollment modal, we need all students to allow enrollment
+      const data = await lecturerAPI.getStudentsForEnrollment();
       setStudents(data || []);
     } catch (error) {
       console.error('Failed to fetch students:', error);
@@ -1676,13 +1874,25 @@ const LecturerDashboard = () => {
         return <FinalResultsManager profile={profile} courses={courses} />;
 
       case 'quizzes':
-        return <EnhancedQuizDashboard profile={profile} courses={courses} />;
+        return (
+          <LazyComponentWrapper fallback={<FormSkeleton />}>
+            <EnhancedQuizDashboard profile={profile} courses={courses} />
+          </LazyComponentWrapper>
+        );
 
       case 'quiz-results':
-        return <QuizResultsAnalytics lecturerId={profile?.id} quizzes={[]} />;
+        return (
+          <LazyComponentWrapper fallback={<TableSkeleton />}>
+            <QuizResultsAnalytics lecturerId={profile?.id} quizzes={[]} />
+          </LazyComponentWrapper>
+        );
 
       case 'assignments':
-        return <AssignmentManager profile={profile} courses={courses} />;
+        return (
+          <LazyComponentWrapper fallback={<FormSkeleton />}>
+            <AssignmentManager profile={profile} courses={courses} />
+          </LazyComponentWrapper>
+        );
 
       default:
         return <div>Tab content not found</div>;
@@ -1702,8 +1912,59 @@ const LecturerDashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header Skeleton */}
+        <header className="bg-white shadow-sm border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <div className="animate-pulse">
+                <div className="h-6 bg-gray-200 rounded w-48"></div>
+              </div>
+              <div className="animate-pulse">
+                <div className="h-10 bg-gray-200 rounded w-20"></div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content Skeleton */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Sidebar Skeleton */}
+            <div className="hidden lg:block lg:w-64 flex-shrink-0">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="animate-pulse space-y-3">
+                  <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="h-10 bg-gray-200 rounded"></div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Content Skeleton */}
+            <div className="flex-1">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="animate-pulse space-y-6">
+                  <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="bg-gray-50 rounded-lg p-6 space-y-4">
+                        <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                        <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                        <div className="h-4 bg-gray-200 rounded w-full"></div>
+                        <div className="flex space-x-2">
+                          <div className="h-10 bg-gray-200 rounded flex-1"></div>
+                          <div className="h-10 bg-gray-200 rounded flex-1"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -1835,6 +2096,20 @@ const LecturerDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Student Enrollment Modal */}
+      {showEnrollModal && selectedCourse && (
+        <StudentEnrollmentModal
+          course={selectedCourse}
+          students={students}
+          onClose={() => {
+            setShowEnrollModal(false);
+            setSelectedCourse(null);
+          }}
+          onEnroll={handleEnrollStudent}
+          isLoading={enrollmentLoading}
+        />
+      )}
     </div>
   );
 };

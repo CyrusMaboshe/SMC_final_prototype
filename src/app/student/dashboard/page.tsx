@@ -1,18 +1,32 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, StudentProfile, supabase, studentAPI } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthLoadingOverlay } from '@/components/AuthLoadingSpinner';
 import QRCode from 'qrcode';
-import StudentQuizInterface from '@/components/StudentQuizInterface';
-import EnhancedStudentQuizInterface from '@/components/EnhancedStudentQuizInterface';
-import StudentQuizResults from '@/components/StudentQuizResults';
-import StudentAssignmentSubmission from '@/components/StudentAssignmentSubmission';
-import StudentAssignmentResults from '@/components/StudentAssignmentResults';
-import StudentInvoices from '@/components/StudentInvoices';
-import CalendarView from '@/components/CalendarView';
+import { exportFinalResultsToPDF } from '@/utils/pdfExport';
+import { useAccessControlMonitor, checkModuleAccess } from '@/hooks/useAccessControl';
+import { useStudentExamSlipUpdates } from '@/hooks/useExamSlipUpdates';
+import ExamSlipNotificationDisplay from '@/components/ExamSlipNotificationDisplay';
+import AccessDenied from '@/components/AccessDenied';
+import AccessControlAlert, { AccessControlSuccessAlert } from '@/components/AccessControlAlert';
+import LazyComponentWrapper, { TableSkeleton, CardSkeleton, FormSkeleton } from '@/components/LazyComponentWrapper';
+
+// Lazy load heavy components
+const StudentQuizInterface = lazy(() => import('@/components/StudentQuizInterface'));
+const EnhancedStudentQuizInterface = lazy(() => import('@/components/EnhancedStudentQuizInterface'));
+const StudentQuizResults = lazy(() => import('@/components/StudentQuizResults'));
+const StudentAssignmentSubmission = lazy(() => import('@/components/StudentAssignmentSubmission'));
+const StudentAssignmentResults = lazy(() => import('@/components/StudentAssignmentResults'));
+const StudentFinancialStatements = lazy(() => import('@/components/StudentFinancialStatements'));
+const DoubleEntryLedger = lazy(() => import('@/components/DoubleEntryLedger'));
+const CalendarView = lazy(() => import('@/components/CalendarView'));
+import AccessControlStatus, { AccessControlIndicator, FloatingAccessStatus } from '@/components/AccessControlStatus';
+import StudentAccessStatusView from '@/components/StudentAccessStatusView';
+import ResponsiveDashboardLayout, { ResponsiveNav, ResponsiveCardGrid, ResponsiveTable } from '@/components/ResponsiveDashboardLayout';
+import useActivityLogger from '@/hooks/useActivityLogger';
 
 const ChangePasswordForm = ({ user }: { user: any }) => {
   const [formData, setFormData] = useState({
@@ -636,6 +650,25 @@ const ExamResultsTab = ({ studentId }: { studentId?: string }) => {
     window.print();
   };
 
+  const handleExportPDF = async () => {
+    try {
+      await exportFinalResultsToPDF({
+        studentProfile: {
+          first_name: studentProfile?.first_name,
+          last_name: studentProfile?.last_name,
+          student_id: studentProfile?.student_id,
+          batch: studentProfile?.batch,
+          program: studentProfile?.program
+        },
+        examResults: examResults,
+        studentId: studentId
+      });
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('Failed to export PDF. Please try again.');
+    }
+  };
+
   return (
     <>
       <style jsx global>{`
@@ -683,8 +716,17 @@ const ExamResultsTab = ({ studentId }: { studentId?: string }) => {
         }
       `}</style>
       <div className="space-y-6">
-        {/* Print Button */}
-        <div className="flex justify-end mb-4">
+        {/* Print and Export Buttons */}
+        <div className="flex justify-end gap-3 mb-4">
+          <button
+            onClick={handleExportPDF}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 print:hidden"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Export PDF
+          </button>
           <button
             onClick={handlePrint}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 print:hidden"
@@ -878,20 +920,30 @@ const ExamSlipsTab = ({ studentId }: { studentId?: string }) => {
   const [selectedSemester, setSelectedSemester] = useState(1);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState('2024-2025');
 
+  // Use the new exam slip updates hook
+  const { notification, clearNotification } = useStudentExamSlipUpdates(studentId);
+
   useEffect(() => {
     if (studentId) {
-      fetchEnrolledCourses();
+      fetchEnrolledCoursesWithExamSlips();
       fetchStudentProfile();
     }
   }, [studentId]);
 
-  const fetchEnrolledCourses = async () => {
+  // Refresh data when exam slips are updated
+  useEffect(() => {
+    if (notification) {
+      fetchEnrolledCoursesWithExamSlips();
+    }
+  }, [notification]);
+
+  const fetchEnrolledCoursesWithExamSlips = async () => {
     try {
       setLoading(true);
-      const data = await studentAPI.getEnrolledCourses(studentId!);
+      const data = await studentAPI.getEnrolledCoursesWithExamSlips(studentId!);
       setEnrolledCourses(data || []);
     } catch (error) {
-      console.error('Failed to fetch enrolled courses:', error);
+      console.error('Failed to fetch enrolled courses with exam slips:', error);
     } finally {
       setLoading(false);
     }
@@ -1044,6 +1096,12 @@ const ExamSlipsTab = ({ studentId }: { studentId?: string }) => {
           </div>
         </div>
 
+        {/* Real-time Update Notification */}
+        <ExamSlipNotificationDisplay
+          notification={notification}
+          onClose={clearNotification}
+        />
+
         {/* Exam Slip */}
         <div className="bg-white rounded-lg shadow-md p-8">
           <div className="text-center border-b pb-6 mb-6">
@@ -1090,31 +1148,43 @@ const ExamSlipsTab = ({ studentId }: { studentId?: string }) => {
                   </tr>
                 </thead>
                 <tbody className="bg-white">
-                  {enrolledCourses.map((enrollment: any) => (
-                    <tr key={enrollment.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900 border border-gray-300">
-                        {enrollment.courses?.course_code}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border border-gray-300">
-                        {enrollment.courses?.course_name}
-                      </td>
-                      <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
-                        {enrollment.courses?.credits || 3}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 border border-gray-300">
-                        {enrollment.courses?.lecturers?.first_name} {enrollment.courses?.lecturers?.last_name}
-                      </td>
-                      <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
-                        TBA
-                      </td>
-                      <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
-                        TBA
-                      </td>
-                      <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
-                        TBA
-                      </td>
-                    </tr>
-                  ))}
+                  {enrolledCourses.map((enrollment: any) => {
+                    // Find the active exam slip for this course
+                    const examSlip = enrollment.courses?.exam_slips?.find((slip: any) =>
+                      slip.is_active &&
+                      slip.academic_year === selectedAcademicYear &&
+                      slip.semester === selectedSemester
+                    );
+
+                    return (
+                      <tr key={enrollment.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900 border border-gray-300">
+                          {enrollment.courses?.course_code}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900 border border-gray-300">
+                          {enrollment.courses?.course_name}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
+                          {enrollment.courses?.credits || 3}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900 border border-gray-300">
+                          {examSlip?.lecturer_name ||
+                           (enrollment.courses?.lecturers?.first_name && enrollment.courses?.lecturers?.last_name
+                            ? `${enrollment.courses.lecturers.first_name} ${enrollment.courses.lecturers.last_name}`
+                            : 'TBA')}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
+                          {examSlip?.exam_date ? new Date(examSlip.exam_date).toLocaleDateString() : 'TBA'}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
+                          {examSlip?.exam_time || 'TBA'}
+                        </td>
+                        <td className="px-4 py-3 text-center text-sm text-gray-900 border border-gray-300">
+                          {examSlip?.venue || 'TBA'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1292,7 +1362,42 @@ const StudentDashboard = () => {
   const router = useRouter();
   const { user, profile, authState, logout } = useAuth();
 
+  // Access control monitoring
+  const accessControl = useAccessControlMonitor(profile?.id, (hasAccess) => {
+    if (!hasAccess) {
+      console.log('Access revoked for student:', profile?.id);
+    }
+  });
+
   console.log('Student Dashboard - User:', user);
+  console.log('Student Dashboard - Access Control:', accessControl);
+
+  // Helper function to determine module type for access control
+  const getModuleType = (tabId: string): 'results' | 'courses' | 'timetable' | 'financial' | 'general' => {
+    switch (tabId) {
+      case 'ca-results':
+      case 'exam-results':
+      case 'quiz-results':
+      case 'assignment-results':
+        return 'results';
+      case 'enrolled-courses':
+      case 'attempt-quizzes':
+      case 'submit-assignments':
+        return 'courses';
+      case 'exam-slips':
+      case 'calendar':
+        return 'timetable';
+      case 'financial-statements':
+      case 'financial-ledger':
+        return 'financial';
+      case 'access-status':
+      case 'personal-info':
+      case 'change-password':
+        return 'general';
+      default:
+        return 'general';
+    }
+  };
   console.log('Student Dashboard - Profile:', profile);
 
   // Redirect if not authenticated or not a student
@@ -1310,20 +1415,47 @@ const StudentDashboard = () => {
 
   const tabs = [
     { id: 'personal-info', label: 'Personal Information', icon: '👤' },
+    { id: 'access-status', label: 'Access Status', icon: '🔐' },
     { id: 'ca-results', label: 'Continuous Assessment', icon: '📊' },
     { id: 'exam-results', label: 'Final Results', icon: '📋' },
     { id: 'quiz-results', label: 'Quiz Results', icon: '🧠' },
     { id: 'attempt-quizzes', label: 'Attempt Quizzes', icon: '✏️' },
     { id: 'submit-assignments', label: 'Submit Assignments', icon: '📝' },
     { id: 'assignment-results', label: 'Assignment Results', icon: '📄' },
+    { id: 'financial-statements', label: 'Financial Statements', icon: '💰' },
+    { id: 'financial-ledger', label: 'Financial Ledger', icon: '📊' },
     { id: 'exam-slips', label: 'Exam Slips', icon: '🎫' },
     { id: 'enrolled-courses', label: 'Enrolled Courses', icon: '📚' },
     { id: 'calendar', label: 'Academic Calendar', icon: '📅' },
-    { id: 'change-password', label: 'Change Password', icon: '🔒' },
-    { id: 'financial-statements', label: 'Financial Statements', icon: '📈' }
+    { id: 'change-password', label: 'Change Password', icon: '🔒' }
   ];
 
   const renderTabContent = () => {
+    // Check module access for restricted tabs
+    const moduleAccess = checkModuleAccess(accessControl, getModuleType(activeTab));
+
+    if (!moduleAccess.allowed) {
+      return (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl text-red-600">🚫</span>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Restricted</h3>
+          <p className="text-gray-600 mb-4">{moduleAccess.reason}</p>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md mx-auto">
+            <p className="text-sm text-red-800">
+              {!accessControl.paymentApproved && !accessControl.semesterRegistered
+                ? 'You must have approved payment and semester registration to access this module.'
+                : !accessControl.paymentApproved
+                ? 'Payment approval is required to access this module.'
+                : 'Semester registration is required to access this module.'
+              }
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     switch (activeTab) {
       case 'personal-info':
         return (
@@ -1386,16 +1518,32 @@ const StudentDashboard = () => {
         return <ExamResultsTab studentId={profile?.id} />;
 
       case 'quiz-results':
-        return <StudentQuizResults studentId={profile?.id} />;
+        return (
+          <LazyComponentWrapper fallback={<TableSkeleton />}>
+            <StudentQuizResults studentId={profile?.id} />
+          </LazyComponentWrapper>
+        );
 
       case 'attempt-quizzes':
-        return <EnhancedStudentQuizInterface studentId={profile?.id} />;
+        return (
+          <LazyComponentWrapper fallback={<FormSkeleton />}>
+            <EnhancedStudentQuizInterface studentId={profile?.id} />
+          </LazyComponentWrapper>
+        );
 
       case 'submit-assignments':
-        return <StudentAssignmentSubmission studentId={profile?.id} />;
+        return (
+          <LazyComponentWrapper fallback={<FormSkeleton />}>
+            <StudentAssignmentSubmission studentId={profile?.id} />
+          </LazyComponentWrapper>
+        );
 
       case 'assignment-results':
-        return <StudentAssignmentResults studentId={profile?.id} />;
+        return (
+          <LazyComponentWrapper fallback={<TableSkeleton />}>
+            <StudentAssignmentResults studentId={profile?.id} />
+          </LazyComponentWrapper>
+        );
 
       case 'exam-slips':
         return <ExamSlipsTab studentId={profile?.id} />;
@@ -1404,7 +1552,11 @@ const StudentDashboard = () => {
         return <EnrolledCoursesTab studentId={profile?.id} />;
 
       case 'calendar':
-        return <CalendarView user={user} />;
+        return (
+          <LazyComponentWrapper fallback={<CardSkeleton />}>
+            <CalendarView user={user} />
+          </LazyComponentWrapper>
+        );
 
       case 'change-password':
         return <ChangePasswordForm user={user} />;
@@ -1412,7 +1564,24 @@ const StudentDashboard = () => {
       case 'financial-statements':
         console.log('Profile for financial statements:', profile);
         console.log('Student ID being passed:', profile?.student_id);
-        return <StudentInvoices studentId={profile?.student_id} />;
+        console.log('User email being passed:', user?.email);
+        return (
+          <LazyComponentWrapper fallback={<TableSkeleton />}>
+            <StudentFinancialStatements studentId={profile?.student_id} userEmail={user?.email} />
+          </LazyComponentWrapper>
+        );
+
+      case 'financial-ledger':
+        console.log('Profile for financial ledger:', profile);
+        console.log('Student ID being passed:', profile?.id);
+        return (
+          <LazyComponentWrapper fallback={<TableSkeleton />}>
+            <DoubleEntryLedger studentId={profile?.id} isStudentView={true} />
+          </LazyComponentWrapper>
+        );
+
+      case 'access-status':
+        return <StudentAccessStatusView studentId={profile?.id} />;
 
       default:
         return <div>Tab content not found</div>;
@@ -1431,6 +1600,72 @@ const StudentDashboard = () => {
     return <AuthLoadingOverlay message="Redirecting..." subMessage="Taking you back to the login page" />;
   }
 
+  // Show skeleton loading while checking access control for better UX
+  if (accessControl.isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white">
+        {/* Header Skeleton */}
+        <header className="bg-white shadow-sm border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center py-4">
+              <div className="animate-pulse">
+                <div className="h-8 bg-gray-200 rounded w-48"></div>
+              </div>
+              <div className="animate-pulse">
+                <div className="h-10 bg-gray-200 rounded w-24"></div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content Skeleton */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Sidebar Skeleton */}
+            <div className="lg:w-64 flex-shrink-0">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="animate-pulse space-y-3">
+                  <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                  {[...Array(8)].map((_, i) => (
+                    <div key={i} className="h-10 bg-gray-200 rounded"></div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Content Skeleton */}
+            <div className="flex-1">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="animate-pulse space-y-6">
+                  <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {[...Array(6)].map((_, i) => (
+                      <div key={i} className="space-y-3">
+                        <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                        <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show access denied if student doesn't have access
+  if (!accessControl.hasAccess) {
+    return (
+      <AccessDenied
+        accessState={accessControl}
+        studentName={profile ? `${profile.first_name} ${profile.last_name}` : undefined}
+        onRetry={accessControl.refreshAccess}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -1446,6 +1681,7 @@ const StudentDashboard = () => {
               <span className="text-sm text-gray-700">
                 Welcome, {profile?.first_name || profile?.student_id || 'Student'}
               </span>
+              <AccessControlIndicator accessState={accessControl} />
               <button
                 onClick={handleLogout}
                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -1486,12 +1722,21 @@ const StudentDashboard = () => {
 
           {/* Main Content */}
           <div className="flex-1 print:w-full print:m-0 print:p-0">
+            {/* Access Control Alerts */}
+            <div className="mb-6 print:hidden">
+              <AccessControlAlert accessState={accessControl} />
+              <AccessControlSuccessAlert accessState={accessControl} />
+            </div>
+
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none print:rounded-none print:p-0">
               {renderTabContent()}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Floating Access Status Widget */}
+      <FloatingAccessStatus accessState={accessControl} />
     </div>
   );
 };

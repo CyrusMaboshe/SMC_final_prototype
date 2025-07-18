@@ -36,6 +36,9 @@ interface LedgerEntry {
 const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
   const [students, setStudents] = useState<StudentWithFinancials[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([]);
+  const [accountBalances, setAccountBalances] = useState<any[]>([]);
+  const [transactionHistory, setTransactionHistory] = useState<any[]>([]);
+  const [financialSummary, setFinancialSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showAddRecord, setShowAddRecord] = useState(false);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
@@ -47,6 +50,7 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeTab, setActiveTab] = useState('ledger'); // ledger, accounts, transactions, summary
 
   const [recordForm, setRecordForm] = useState({
     student_id: '',
@@ -82,30 +86,45 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
       setLoading(true);
       setError('');
 
-      console.log('Loading accountant data...');
+      console.log('Loading enhanced accountant data...');
 
-      const [studentsData, recordsData, paymentsData] = await Promise.all([
+      const [
+        studentsData,
+        recordsData,
+        paymentsData,
+        accountsData,
+        transactionsData,
+        summaryData
+      ] = await Promise.all([
         accountantAPI.getAllStudents(),
         accountantAPI.getAllFinancialRecords(),
-        accountantAPI.getAllPayments()
+        accountantAPI.getAllPayments(),
+        accountantAPI.getAccountBalances(),
+        accountantAPI.getTransactionHistory(undefined, undefined, 50),
+        accountantAPI.getFinancialSummary()
       ]);
 
       console.log('Students loaded:', studentsData?.length || 0);
       console.log('Financial records loaded:', recordsData?.length || 0);
       console.log('Payments loaded:', paymentsData?.length || 0);
+      console.log('Account balances loaded:', accountsData?.length || 0);
+      console.log('Transaction history loaded:', transactionsData?.length || 0);
 
       setStudents(studentsData || []);
+      setAccountBalances(accountsData || []);
+      setTransactionHistory(transactionsData || []);
+      setFinancialSummary(summaryData || null);
 
       // Combine financial records and payments into ledger entries
       const entries: LedgerEntry[] = [];
-      
-      // Add financial records as fee entries
+
+      // Add financial records as fee entries (using new RPC function structure)
       recordsData?.forEach(record => {
         entries.push({
           id: record.id,
           student_id: record.student_id,
-          student_name: `${record.students?.first_name} ${record.students?.last_name}`,
-          student_number: record.students?.student_id || '',
+          student_name: `${record.first_name} ${record.last_name}`,
+          student_number: record.student_number || '',
           description: `${record.academic_year} Semester ${record.semester} Fees`,
           amount: record.total_amount,
           balance: record.balance,
@@ -114,13 +133,13 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
         });
       });
 
-      // Add payments as payment entries
+      // Add payments as payment entries (using new RPC function structure)
       paymentsData?.forEach(payment => {
         entries.push({
           id: payment.id,
           student_id: payment.student_id,
-          student_name: `${payment.students?.first_name} ${payment.students?.last_name}`,
-          student_number: payment.students?.student_id || '',
+          student_name: `${payment.first_name} ${payment.last_name}`,
+          student_number: payment.student_number || '',
           description: `Payment - ${payment.payment_method || 'Cash'}`,
           amount: payment.amount,
           balance: 0, // Will be calculated
@@ -225,18 +244,7 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
     }
   };
 
-  const handleDeleteRecord = async (recordId: string) => {
-    if (!confirm('Are you sure you want to delete this financial record?')) return;
-
-    try {
-      setError('');
-      await accountantAPI.deleteFinancialRecord(recordId, accountantId);
-      setSuccess('Financial record deleted successfully!');
-      loadData();
-    } catch (error: any) {
-      setError(error.message || 'Failed to delete financial record');
-    }
-  };
+  // Delete functionality removed for security - account balances should not be deleted
 
   const handleEditPayment = (payment: any) => {
     setEditingPayment(payment);
@@ -273,18 +281,7 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
     }
   };
 
-  const handleDeletePayment = async (paymentId: string) => {
-    if (!confirm('Are you sure you want to delete this payment?')) return;
-
-    try {
-      setError('');
-      await accountantAPI.deletePayment(paymentId, accountantId);
-      setSuccess('Payment deleted successfully!');
-      loadData();
-    } catch (error: any) {
-      setError(error.message || 'Failed to delete payment');
-    }
-  };
+  // Delete functionality removed for security - payments should not be deleted
 
   const filteredEntries = ledgerEntries.filter(entry => {
     if (!searchTerm) return true;
@@ -321,7 +318,7 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Financial Ledger</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Financial Management</h2>
         <div className="flex space-x-3">
           <button
             onClick={() => setShowRecordPayment(true)}
@@ -350,7 +347,35 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
         </div>
       )}
 
-      {/* Search and Filters */}
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex space-x-8">
+          {[
+            { id: 'ledger', name: 'Transaction Ledger', icon: '📊' },
+            { id: 'accounts', name: 'Account Balances', icon: '💰' },
+            { id: 'transactions', name: 'Transaction History', icon: '📋' },
+            { id: 'summary', name: 'Financial Summary', icon: '📈' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`${
+                activeTab === tab.id
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.name}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'ledger' && (
+        <>
+          {/* Search and Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1">
@@ -463,39 +488,21 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
                       <div className="flex justify-center space-x-2">
                         {entry.type === 'fee' ? (
-                          <>
-                            <button
-                              onClick={() => handleEditRecord(entry)}
-                              className="text-blue-600 hover:text-blue-900 text-xs"
-                              title="Edit Record"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => handleDeleteRecord(entry.id)}
-                              className="text-red-600 hover:text-red-900 text-xs"
-                              title="Delete Record"
-                            >
-                              🗑️
-                            </button>
-                          </>
+                          <button
+                            onClick={() => handleEditRecord(entry)}
+                            className="text-blue-600 hover:text-blue-900 text-xs"
+                            title="Edit Record"
+                          >
+                            ✏️ Edit
+                          </button>
                         ) : (
-                          <>
-                            <button
-                              onClick={() => handleEditPayment(entry)}
-                              className="text-blue-600 hover:text-blue-900 text-xs"
-                              title="Edit Payment"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => handleDeletePayment(entry.id)}
-                              className="text-red-600 hover:text-red-900 text-xs"
-                              title="Delete Payment"
-                            >
-                              🗑️
-                            </button>
-                          </>
+                          <button
+                            onClick={() => handleEditPayment(entry)}
+                            className="text-blue-600 hover:text-blue-900 text-xs"
+                            title="Edit Payment"
+                          >
+                            ✏️ Edit
+                          </button>
                         )}
                       </div>
                     </td>
@@ -914,6 +921,194 @@ const FinancialLedger: React.FC<FinancialLedgerProps> = ({ accountantId }) => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+        </>
+      )}
+
+      {/* Account Balances Tab */}
+      {activeTab === 'accounts' && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">Account Balances</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Account Number
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Account Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Account Type
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Balance
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {accountBalances.map((account) => (
+                  <tr key={account.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {account.account_number}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {account.account_name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        account.account_type === 'asset' ? 'bg-green-100 text-green-800' :
+                        account.account_type === 'liability' ? 'bg-red-100 text-red-800' :
+                        account.account_type === 'equity' ? 'bg-blue-100 text-blue-800' :
+                        account.account_type === 'revenue' ? 'bg-purple-100 text-purple-800' :
+                        'bg-orange-100 text-orange-800'
+                      }`}>
+                        {account.account_type}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
+                      <span className={account.balance >= 0 ? 'text-green-600' : 'text-red-600'}>
+                        {formatCurrency(account.balance)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Transaction History Tab */}
+      {activeTab === 'transactions' && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">Recent Transaction History</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Description
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Reference
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Amount
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {transactionHistory.map((transaction) => (
+                  <tr key={transaction.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {formatDate(transaction.transaction_date)}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {transaction.description}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {transaction.reference_number || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">
+                      {formatCurrency(transaction.total_amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Financial Summary Tab */}
+      {activeTab === 'summary' && financialSummary && (
+        <div className="space-y-6">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                    <span className="text-blue-600 font-semibold">👥</span>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Total Students</p>
+                  <p className="text-2xl font-semibold text-gray-900">{financialSummary.totalStudents}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                    <span className="text-red-600 font-semibold">💸</span>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Total Owed</p>
+                  <p className="text-2xl font-semibold text-red-600">{formatCurrency(financialSummary.totalOwed)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                    <span className="text-green-600 font-semibold">💰</span>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Total Paid</p>
+                  <p className="text-2xl font-semibold text-green-600">{formatCurrency(financialSummary.totalPaid)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                    <span className="text-orange-600 font-semibold">⚖️</span>
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">Outstanding Balance</p>
+                  <p className="text-2xl font-semibold text-orange-600">{formatCurrency(financialSummary.totalBalance)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent Transactions Summary */}
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
+            <div className="space-y-3">
+              {financialSummary.recentTransactions?.slice(0, 5).map((transaction: any) => (
+                <div key={transaction.id} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{transaction.description}</p>
+                    <p className="text-xs text-gray-500">{formatDate(transaction.transaction_date)}</p>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">
+                    {formatCurrency(transaction.total_amount)}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

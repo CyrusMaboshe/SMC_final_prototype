@@ -4,9 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, adminAPI, applicationAPI } from '@/lib/supabase';
 import CalendarManagement from '@/components/admin/CalendarManagement';
+import ExamSlipManagement from '@/components/admin/ExamSlipManagement';
 
 const AdminDashboard = () => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [counts, setCounts] = useState({
@@ -140,11 +141,31 @@ const AdminDashboard = () => {
             </button>
 
             <button
+              onClick={() => setActiveTab('exam-slips')}
+              className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors mb-1 ${
+                activeTab === 'exam-slips'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <span className="mr-3">📋</span>
+              Exam Slips
+            </button>
+
+            <button
               onClick={() => router.push('/admin/courses')}
               className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-700 hover:bg-gray-100"
             >
               <span className="mr-3">📚</span>
               Manage Courses
+            </button>
+
+            <button
+              onClick={() => router.push('/admin/applications')}
+              className="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors mb-1 text-gray-700 hover:bg-gray-100"
+            >
+              <span className="mr-3">📝</span>
+              Review Applications
             </button>
 
             <button
@@ -284,6 +305,10 @@ const AdminDashboard = () => {
 
             {activeTab === 'calendar' && (
               <CalendarManagement user={user} />
+            )}
+
+            {activeTab === 'exam-slips' && (
+              <ExamSlipManagement adminId={user?.id} />
             )}
 
             {activeTab === 'system' && (

@@ -111,72 +111,119 @@ const StudentAssignmentResults: React.FC<StudentAssignmentResultsProps> = ({ stu
           <p className="text-gray-600">Your assignment results and feedback will appear here once graded.</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {submissions.map((submission) => (
-            <div key={submission.id} className="bg-white border border-gray-200 rounded-lg p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    {submission.assignments?.title}
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-2">
-                    <span className="font-medium">Course:</span> {submission.assignments?.courses?.course_code} - {submission.assignments?.courses?.course_name}
-                  </p>
-                  <p className="text-sm text-gray-600 mb-2">
-                    <span className="font-medium">Submitted:</span> {formatDate(submission.submitted_at)}
-                  </p>
-                  {submission.graded_at && (
-                    <p className="text-sm text-gray-600 mb-2">
-                      <span className="font-medium">Graded:</span> {formatDate(submission.graded_at)}
-                    </p>
-                  )}
-                  {submission.lecturers && (
-                    <p className="text-sm text-gray-600">
-                      <span className="font-medium">Graded by:</span> {submission.lecturers.first_name} {submission.lecturers.last_name}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-col items-end space-y-2">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(submission.status)}`}>
-                    {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
-                  </span>
-                  {submission.score !== null && submission.score !== undefined && (
-                    <div className="text-right">
-                      <div className={`text-lg font-bold ${getGradeColor(submission.score, submission.assignments?.max_score || 100)}`}>
-                        {submission.score}/{submission.assignments?.max_score}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Assignment
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Course
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Submitted
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Score
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Percentage
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Graded By
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {submissions.map((submission) => (
+                  <tr key={submission.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {submission.assignments?.title}
                       </div>
-                      <div className="text-sm text-gray-600">
-                        {((submission.score / (submission.assignments?.max_score || 100)) * 100).toFixed(1)}%
+                      {submission.file_name && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          📎 {submission.file_name}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {submission.assignments?.courses?.course_code}
                       </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {submission.feedback && (
-                <div className="mb-4">
-                  <h4 className="font-medium text-gray-900 mb-2">Feedback:</h4>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <p className="text-gray-700 text-sm">{submission.feedback}</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center">
-                <button
-                  onClick={() => setSelectedSubmission(submission)}
-                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                >
-                  View Details
-                </button>
-                {submission.file_path && (
-                  <button className="text-green-600 hover:text-green-800 text-sm font-medium">
-                    Download Submission
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+                      <div className="text-sm text-gray-500">
+                        {submission.assignments?.courses?.course_name}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="text-sm text-gray-900">
+                        {new Date(submission.submitted_at).toLocaleDateString()}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(submission.submitted_at).toLocaleTimeString()}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      {submission.score !== null && submission.score !== undefined ? (
+                        <div className={`text-sm font-medium ${getGradeColor(submission.score, submission.assignments?.max_score || 100)}`}>
+                          {submission.score}/{submission.assignments?.max_score}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-400">
+                          Not graded
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      {submission.score !== null && submission.score !== undefined ? (
+                        <div className={`text-sm font-medium ${getGradeColor(submission.score, submission.assignments?.max_score || 100)}`}>
+                          {((submission.score / (submission.assignments?.max_score || 100)) * 100).toFixed(1)}%
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-400">
+                          -
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(submission.status)}`}>
+                        {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="text-sm text-gray-900">
+                        {submission.lecturers ?
+                          `${submission.lecturers.first_name} ${submission.lecturers.last_name}` :
+                          'Not assigned'
+                        }
+                      </div>
+                      {submission.graded_at && (
+                        <div className="text-xs text-gray-500">
+                          {new Date(submission.graded_at).toLocaleDateString()}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <button
+                        onClick={() => setSelectedSubmission(submission)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                      >
+                        View Details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

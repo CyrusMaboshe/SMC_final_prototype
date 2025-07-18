@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Payment Approvals API</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        .loading { background-color: #fff3cd; border: 1px solid #ffeaa7; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Payment Approvals API Test</h1>
+    <button onclick="testPaymentApprovals()">Test Payment Approvals API</button>
+    <div id="results"></div>
+
+    <script>
+        // Initialize Supabase
+        const supabaseUrl = 'https://tigknjhplktzqzradmkd.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpZ2tuamhwbGt0enF6cmFkbWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTg5NTksImV4cCI6MjA2NjAzNDk1OX0.GhMpUkea-rEqqIKWZv9q7l_MIeZVK57Tj5oAlKC-4tY';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        function addResult(title, type, message, data = null) {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${type}`;
+            
+            let content = `<h3>${title}</h3><p>${message}</p>`;
+            if (data) {
+                content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            resultDiv.innerHTML = content;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        async function testPaymentApprovals() {
+            document.getElementById('results').innerHTML = '';
+            addResult('Payment Approvals Test', 'loading', 'Testing payment approvals API...');
+            
+            try {
+                // Test 1: Direct query without joins
+                addResult('Test 1', 'loading', 'Testing direct payment_approvals query...');
+                const { data: directData, error: directError } = await supabase
+                    .from('payment_approvals')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (directError) {
+                    addResult('Test 1', 'error', `Direct query failed: ${directError.message}`);
+                } else {
+                    addResult('Test 1', 'success', `Direct query successful: ${directData.length} records found`, {
+                        total: directData.length,
+                        approved: directData.filter(p => p.approval_status === 'approved').length,
+                        pending: directData.filter(p => p.approval_status === 'pending').length,
+                        revoked: directData.filter(p => p.approval_status === 'revoked').length,
+                        sample: directData.slice(0, 3)
+                    });
+                }
+
+                // Test 2: Query with students join (Supabase syntax)
+                addResult('Test 2', 'loading', 'Testing payment_approvals with students join...');
+                const { data: joinData, error: joinError } = await supabase
+                    .from('payment_approvals')
+                    .select(`
+                        *,
+                        students(student_id, first_name, last_name, email)
+                    `)
+                    .order('created_at', { ascending: false });
+
+                if (joinError) {
+                    addResult('Test 2', 'error', `Join query failed: ${joinError.message}`);
+                } else {
+                    addResult('Test 2', 'success', `Join query successful: ${joinData.length} records found`, {
+                        total: joinData.length,
+                        approved: joinData.filter(p => p.approval_status === 'approved').length,
+                        sample: joinData.slice(0, 2)
+                    });
+                }
+
+                // Test 3: Test accountants table
+                addResult('Test 3', 'loading', 'Testing accountants table...');
+                const { data: accountantsData, error: accountantsError } = await supabase
+                    .from('accountants')
+                    .select('*');
+
+                if (accountantsError) {
+                    addResult('Test 3', 'error', `Accountants query failed: ${accountantsError.message}`);
+                } else {
+                    addResult('Test 3', 'success', `Accountants query successful: ${accountantsData.length} records found`, accountantsData);
+                }
+
+                // Test 4: Test manual accountant enrichment
+                if (directData && directData.length > 0) {
+                    addResult('Test 4', 'loading', 'Testing manual accountant enrichment...');
+                    const sampleApproval = directData[0];
+                    if (sampleApproval.approved_by) {
+                        const { data: accountantData, error: accountantError } = await supabase
+                            .from('accountants')
+                            .select('first_name, last_name, accountant_id, email')
+                            .or(`id.eq.${sampleApproval.approved_by},user_id.eq.${sampleApproval.approved_by}`)
+                            .single();
+
+                        if (accountantError) {
+                            addResult('Test 4', 'error', `Accountant enrichment failed: ${accountantError.message}`);
+                        } else {
+                            addResult('Test 4', 'success', 'Accountant enrichment successful', {
+                                approval: sampleApproval,
+                                accountant: accountantData
+                            });
+                        }
+                    }
+                }
+
+            } catch (error) {
+                addResult('Error', 'error', `Unexpected error: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -142,8 +142,8 @@ const QuizResultsAnalytics: React.FC<QuizResultsAnalyticsProps> = ({ lecturerId,
           comparison = a.percentage - b.percentage;
           break;
         case 'student':
-          comparison = `${a.students.first_name} ${a.students.last_name}`.localeCompare(
-            `${b.students.first_name} ${b.students.last_name}`
+          comparison = `${a.students?.first_name || ''} ${a.students?.last_name || ''}`.localeCompare(
+            `${b.students?.first_name || ''} ${b.students?.last_name || ''}`
           );
           break;
       }
@@ -291,18 +291,18 @@ const QuizResultsAnalytics: React.FC<QuizResultsAnalyticsProps> = ({ lecturerId,
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900">
-                          {result.students.first_name} {result.students.last_name}
+                          {result.students?.first_name || 'N/A'} {result.students?.last_name || ''}
                         </div>
-                        <div className="text-sm text-gray-500">{result.students.student_id}</div>
+                        <div className="text-sm text-gray-500">{result.students?.student_id || 'N/A'}</div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{result.quizzes.title}</div>
-                      <div className="text-sm text-gray-500">{result.quizzes.courses.course_code}</div>
+                      <div className="text-sm text-gray-900">{result.quizzes?.title || 'N/A'}</div>
+                      <div className="text-sm text-gray-500">{result.quizzes?.courses?.course_code || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
-                        {result.score}/{result.quizzes.total_marks}
+                        {result.score}/{result.quizzes?.total_marks || 0}
                       </div>
                       <div className={`text-sm font-medium ${getGradeColor(result.percentage)}`}>
                         {result.percentage.toFixed(1)}%

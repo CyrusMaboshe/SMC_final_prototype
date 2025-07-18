@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Ledger Adjustment</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Ledger Adjustment Functionality</h1>
+    
+    <div class="form-group">
+        <label for="supabaseUrl">Supabase URL:</label>
+        <input type="text" id="supabaseUrl" placeholder="https://your-project.supabase.co">
+    </div>
+    
+    <div class="form-group">
+        <label for="supabaseKey">Supabase Anon Key:</label>
+        <input type="text" id="supabaseKey" placeholder="Your anon key">
+    </div>
+    
+    <button onclick="initializeSupabase()">Initialize Connection</button>
+    
+    <hr>
+    
+    <h2>Test Balance Adjustment</h2>
+    
+    <div class="form-group">
+        <label for="studentSelect">Select Student:</label>
+        <select id="studentSelect">
+            <option value="">-- Select a student --</option>
+        </select>
+        <button onclick="loadStudents()">Load Students</button>
+    </div>
+    
+    <div class="form-group">
+        <label for="accountantId">Accountant ID:</label>
+        <input type="text" id="accountantId" value="test-accountant" placeholder="Enter accountant ID">
+    </div>
+    
+    <div class="form-group">
+        <label for="adjustmentType">Adjustment Type:</label>
+        <select id="adjustmentType">
+            <option value="debit">Debit (Add to balance)</option>
+            <option value="credit">Credit (Reduce balance)</option>
+        </select>
+    </div>
+    
+    <div class="form-group">
+        <label for="adjustmentAmount">Adjustment Amount (ZMW):</label>
+        <input type="number" id="adjustmentAmount" step="0.01" min="0" placeholder="0.00">
+    </div>
+    
+    <div class="form-group">
+        <label for="description">Description:</label>
+        <textarea id="description" rows="3" placeholder="Enter adjustment description"></textarea>
+    </div>
+    
+    <div class="form-group">
+        <label for="referenceNumber">Reference Number:</label>
+        <input type="text" id="referenceNumber" placeholder="ADJ-001">
+    </div>
+    
+    <button onclick="testBalanceAdjustment()">Apply Balance Adjustment</button>
+    <button onclick="viewAdjustmentHistory()">View Adjustment History</button>
+    
+    <div id="result" class="result" style="display: none;"></div>
+
+    <script>
+        let supabase = null;
+        let selectedStudent = null;
+
+        function initializeSupabase() {
+            const url = document.getElementById('supabaseUrl').value;
+            const key = document.getElementById('supabaseKey').value;
+            
+            if (!url || !key) {
+                showResult('Please enter both Supabase URL and key', 'error');
+                return;
+            }
+            
+            try {
+                supabase = window.supabase.createClient(url, key);
+                showResult('✅ Supabase connection initialized successfully!', 'success');
+            } catch (error) {
+                showResult('❌ Failed to initialize Supabase: ' + error.message, 'error');
+            }
+        }
+
+        async function loadStudents() {
+            if (!supabase) {
+                showResult('Please initialize Supabase connection first', 'error');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('students')
+                    .select('id, student_id, first_name, last_name')
+                    .limit(20);
+
+                if (error) throw error;
+
+                const select = document.getElementById('studentSelect');
+                select.innerHTML = '<option value="">-- Select a student --</option>';
+                
+                data.forEach(student => {
+                    const option = document.createElement('option');
+                    option.value = student.id;
+                    option.textContent = `${student.student_id} - ${student.first_name} ${student.last_name}`;
+                    option.dataset.student = JSON.stringify(student);
+                    select.appendChild(option);
+                });
+
+                showResult(`✅ Loaded ${data.length} students`, 'success');
+            } catch (error) {
+                showResult('❌ Failed to load students: ' + error.message, 'error');
+            }
+        }
+
+        async function testBalanceAdjustment() {
+            if (!supabase) {
+                showResult('Please initialize Supabase connection first', 'error');
+                return;
+            }
+
+            const studentSelect = document.getElementById('studentSelect');
+            const studentId = studentSelect.value;
+            const accountantId = document.getElementById('accountantId').value;
+            const adjustmentType = document.getElementById('adjustmentType').value;
+            const adjustmentAmount = parseFloat(document.getElementById('adjustmentAmount').value);
+            const description = document.getElementById('description').value;
+            const referenceNumber = document.getElementById('referenceNumber').value;
+
+            if (!studentId || !accountantId || !adjustmentAmount || !description || !referenceNumber) {
+                showResult('Please fill in all fields', 'error');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('ledger_adjustments')
+                    .insert([{
+                        student_id: studentId,
+                        date: new Date().toISOString().split('T')[0],
+                        description: description,
+                        reference_number: referenceNumber,
+                        debit_amount: adjustmentType === 'debit' ? adjustmentAmount : 0,
+                        credit_amount: adjustmentType === 'credit' ? adjustmentAmount : 0,
+                        type: 'adjustment',
+                        created_by: accountantId
+                    }])
+                    .select()
+                    .single();
+
+                if (error) {
+                    console.error('Detailed error:', error);
+                    throw new Error(`Database error: ${error.message || error.details || error.hint || 'Unknown database error'}`);
+                }
+
+                const studentOption = studentSelect.options[studentSelect.selectedIndex];
+                const studentData = JSON.parse(studentOption.dataset.student);
+
+                showResult(`✅ Balance adjustment applied successfully!
+Student: ${studentData.student_id} - ${studentData.first_name} ${studentData.last_name}
+Adjustment ID: ${data.id}
+Type: ${adjustmentType}
+Amount: ZMW ${adjustmentAmount.toFixed(2)}
+Reference: ${referenceNumber}
+Description: ${description}`, 'success');
+
+                // Clear form
+                document.getElementById('adjustmentAmount').value = '';
+                document.getElementById('description').value = '';
+                document.getElementById('referenceNumber').value = `ADJ-${Date.now()}`;
+
+            } catch (error) {
+                console.error('Full error object:', error);
+                showResult(`❌ Error applying adjustment: ${error.message || error.toString() || 'Unknown error'}`, 'error');
+            }
+        }
+
+        async function viewAdjustmentHistory() {
+            if (!supabase) {
+                showResult('Please initialize Supabase connection first', 'error');
+                return;
+            }
+
+            const studentSelect = document.getElementById('studentSelect');
+            const studentId = studentSelect.value;
+
+            if (!studentId) {
+                showResult('Please select a student first', 'error');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('ledger_adjustments')
+                    .select('id, date, description, reference_number, debit_amount, credit_amount, type, created_by, created_at')
+                    .eq('student_id', studentId)
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                if (error) throw error;
+
+                const studentOption = studentSelect.options[studentSelect.selectedIndex];
+                const studentData = JSON.parse(studentOption.dataset.student);
+
+                const history = data.length > 0 ? data.map(adj => `
+Date: ${adj.date}
+Reference: ${adj.reference_number}
+Type: ${adj.debit_amount > 0 ? 'Debit' : 'Credit'}
+Amount: ZMW ${(adj.debit_amount || adj.credit_amount)}
+Description: ${adj.description}
+Created By: ${adj.created_by}
+Created At: ${new Date(adj.created_at).toLocaleString()}
+---`).join('\n') : 'No adjustment history found';
+
+                showResult(`📊 Adjustment History for ${studentData.student_id} - ${studentData.first_name} ${studentData.last_name}:
+
+${history}`, 'success');
+
+            } catch (error) {
+                showResult(`❌ Error loading adjustment history: ${error.message || error.toString() || 'Unknown error'}`, 'error');
+            }
+        }
+
+        function showResult(message, type) {
+            const result = document.getElementById('result');
+            result.textContent = message;
+            result.className = `result ${type}`;
+            result.style.display = 'block';
+        }
+
+        // Generate initial reference number
+        document.getElementById('referenceNumber').value = `ADJ-${Date.now()}`;
+    </script>
+</body>
+</html>

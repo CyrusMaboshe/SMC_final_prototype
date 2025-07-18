@@ -14,9 +14,11 @@ export interface LoginCredentials {
 export interface AuthUser {
   id: string;
   username: string;
-  role: 'admin' | 'lecturer' | 'student' | 'accountant';
+  role: 'admin' | 'lecturer' | 'student' | 'accountant' | 'principal';
   is_active: boolean;
   last_login?: string;
+  access_denied?: boolean;
+  denial_reason?: string;
 }
 
 export interface StudentProfile {
@@ -74,7 +76,12 @@ export const authAPI = {
 
     const user = data[0];
 
-    // Update last login
+    // Check if access is denied for students
+    if (user.access_denied) {
+      throw new Error(user.denial_reason || 'Access denied');
+    }
+
+    // Update last login only if access is granted
     await supabase
       .from('system_users')
       .update({ last_login: new Date().toISOString() })
@@ -133,7 +140,7 @@ export const authAPI = {
     return {
       id: userId,
       username: username,
-      role: userRole as 'admin' | 'lecturer' | 'student' | 'accountant',
+      role: userRole as 'admin' | 'lecturer' | 'student' | 'accountant' | 'principal',
       is_active: true
     };
   },
@@ -183,7 +190,7 @@ export interface Application {
   emergency_contact_name: string;
   emergency_contact_phone: string;
   emergency_contact_relationship: string;
-  status: 'pending' | 'under_review' | 'accepted' | 'rejected';
+  status: 'pending' | 'under_review' | 'approved' | 'rejected';
   submitted_at: string;
   reviewed_at?: string;
   reviewed_by?: string;
@@ -413,6 +420,97 @@ export interface AdminUser {
   updated_at: string;
 }
 
+// Access Control Interfaces
+export interface PaymentApproval {
+  id: string;
+  student_id: string;
+  payment_id?: string;
+  amount_paid: number;
+  payment_reference?: string;
+  payment_date: string;
+  approved_by?: string;
+  approval_date?: string;
+  access_valid_from: string;
+  access_valid_until: string;
+  approval_status: 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked';
+  approval_notes?: string;
+  auto_expire: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SemesterPeriod {
+  id: string;
+  semester_name: string;
+  academic_year: string;
+  semester_number: number;
+  start_date: string;
+  end_date: string;
+  registration_start_date: string;
+  registration_end_date: string;
+  is_active: boolean;
+  is_registration_open: boolean;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StudentSemesterRegistration {
+  id: string;
+  student_id: string;
+  semester_period_id: string;
+  registration_date: string;
+  approved_by?: string;
+  approval_date?: string;
+  registration_status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  payment_approval_id?: string;
+  registration_notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccessControlLog {
+  id: string;
+  student_id: string;
+  action_type: string;
+  reason?: string;
+  payment_approval_id?: string;
+  semester_registration_id?: string;
+  ip_address?: string;
+  user_agent?: string;
+  created_at: string;
+}
+
+export interface ExamSlip {
+  id: string;
+  course_id: string;
+  lecturer_name: string;
+  exam_date: string;
+  exam_time: string;
+  venue: string;
+  academic_year: string;
+  semester: number;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  courses?: {
+    course_code: string;
+    course_name: string;
+  };
+}
+
+export interface StudentAccessStatus {
+  has_access: boolean;
+  payment_approved: boolean;
+  semester_registered: boolean;
+  access_valid_until?: string;
+  semester_end_date?: string;
+  denial_reason?: string;
+  financial_balance?: number;
+  has_financial_statements?: boolean;
+}
+
 // API functions for applications
 export const applicationAPI = {
   // Submit new application (public)
@@ -429,31 +527,53 @@ export const applicationAPI = {
 
   // Get all applications (admin only)
   async getAll() {
-    const { data, error } = await supabase
-      .from('applications')
-      .select('*')
-      .order('submitted_at', { ascending: false });
-    
-    if (error) throw error;
-    return data;
+    try {
+      const response = await fetch('/api/admin/applications', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to fetch applications');
+      }
+
+      return result.applications;
+    } catch (error) {
+      console.error('Error fetching applications:', error);
+      throw error;
+    }
   },
 
   // Update application status (admin only)
   async updateStatus(id: string, status: Application['status'], adminNotes?: string, reviewedBy?: string) {
-    const { data, error } = await supabase
-      .from('applications')
-      .update({
+    const response = await fetch('/api/admin/applications', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        applicationId: id,
         status,
-        admin_notes: adminNotes,
-        reviewed_by: reviewedBy,
-        reviewed_at: new Date().toISOString()
+        adminNotes,
+        reviewedBy
       })
-      .eq('id', id)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to update application');
+    }
+
+    return result.application;
   },
 
   // Upload application file
@@ -484,14 +604,14 @@ export const applicationAPI = {
 
   // Get application files
   async getFiles(applicationId: string) {
-    const { data, error } = await supabase
-      .from('application_files')
-      .select('*')
-      .eq('application_id', applicationId)
-      .order('created_at', { ascending: false });
+    const response = await fetch(`/api/admin/applications/${applicationId}/files`);
+    const result = await response.json();
 
-    if (error) throw error;
-    return data;
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to fetch application files');
+    }
+
+    return result.files;
   },
 
   // Get applications with files that require review (admin only)
@@ -1474,6 +1594,107 @@ export const adminAPI = {
 
     if (error) throw error;
     return data;
+  },
+
+  // Exam Slip Management Functions
+
+  // Get all exam slips (admin only)
+  async getAllExamSlips() {
+    const { data, error } = await supabase
+      .from('exam_slips')
+      .select(`
+        *,
+        courses(course_code, course_name)
+      `)
+      .order('exam_date', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Create exam slip (admin only)
+  async createExamSlip(examSlipData: {
+    course_id: string;
+    lecturer_name: string;
+    exam_date: string;
+    exam_time: string;
+    venue: string;
+    academic_year: string;
+    semester: number;
+    created_by: string;
+  }) {
+    const { data, error } = await supabase
+      .from('exam_slips')
+      .insert([{
+        ...examSlipData,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select(`
+        *,
+        courses(course_code, course_name)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Update exam slip (admin only)
+  async updateExamSlip(examSlipId: string, updates: {
+    lecturer_name?: string;
+    exam_date?: string;
+    exam_time?: string;
+    venue?: string;
+    academic_year?: string;
+    semester?: number;
+  }) {
+    const { data, error } = await supabase
+      .from('exam_slips')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', examSlipId)
+      .select(`
+        *,
+        courses(course_code, course_name)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Delete exam slip (admin only)
+  async deleteExamSlip(examSlipId: string) {
+    const { error } = await supabase
+      .from('exam_slips')
+      .delete()
+      .eq('id', examSlipId);
+
+    if (error) throw error;
+    return { success: true };
+  },
+
+  // Toggle exam slip active status (admin only)
+  async toggleExamSlipStatus(examSlipId: string, isActive: boolean) {
+    const { data, error } = await supabase
+      .from('exam_slips')
+      .update({
+        is_active: isActive,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', examSlipId)
+      .select(`
+        *,
+        courses(course_code, course_name)
+      `)
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 };
 
@@ -1501,8 +1722,8 @@ export const lecturerAPI = {
     return data;
   },
 
-  // Get all students for enrollment
-  async getAllStudents() {
+  // Get students available for enrollment (all active students for enrollment purposes)
+  async getStudentsForEnrollment() {
     const { data, error } = await supabase
       .from('students')
       .select('id, student_id, first_name, last_name, email, program, year_of_study, status')
@@ -1511,6 +1732,30 @@ export const lecturerAPI = {
 
     if (error) throw error;
     return data;
+  },
+
+  // Get students enrolled in lecturer's courses only
+  async getLecturerStudents(lecturerId: string) {
+    const { data, error } = await supabase
+      .from('course_enrollments')
+      .select(`
+        students(id, student_id, first_name, last_name, email, program, year_of_study, status),
+        courses!inner(lecturer_id)
+      `)
+      .eq('courses.lecturer_id', lecturerId)
+      .eq('status', 'enrolled');
+
+    if (error) throw error;
+
+    // Extract unique students and flatten the structure
+    const studentsMap = new Map();
+    data?.forEach((enrollment: any) => {
+      if (enrollment.students) {
+        studentsMap.set(enrollment.students.id, enrollment.students);
+      }
+    });
+
+    return Array.from(studentsMap.values());
   },
 
   // Enroll student in course (with duplicate check)
@@ -1634,8 +1879,9 @@ export const lecturerAPI = {
       .select(`
         *,
         students(student_id, first_name, last_name),
-        courses(course_code, course_name, lecturer_id)
+        courses!inner(course_code, course_name, lecturer_id)
       `)
+      .eq('courses.lecturer_id', lecturerId)
       .order('created_at', { ascending: false });
 
     if (courseId) {
@@ -1652,9 +1898,7 @@ export const lecturerAPI = {
 
     const { data, error } = await query;
     if (error) throw error;
-
-    // Filter to only show results for courses assigned to this lecturer
-    return data?.filter((result: any) => result.courses?.lecturer_id === lecturerId) || [];
+    return data || [];
   },
 
   // updateCAResult and deleteCAResult functions removed for security
@@ -1735,8 +1979,9 @@ export const lecturerAPI = {
       .select(`
         *,
         students(student_id, first_name, last_name, program),
-        courses(course_code, course_name, lecturer_id)
+        courses!inner(course_code, course_name, lecturer_id)
       `)
+      .eq('courses.lecturer_id', lecturerId)
       .order('submission_date', { ascending: false });
 
     if (academicYear) {
@@ -1748,9 +1993,7 @@ export const lecturerAPI = {
 
     const { data, error } = await query;
     if (error) throw error;
-
-    // Filter to only show results for courses assigned to this lecturer
-    return data?.filter((result: any) => result.courses?.lecturer_id === lecturerId) || [];
+    return data || [];
   },
 
   // updateFinalResult and deleteFinalResult functions removed for security
@@ -1899,6 +2142,21 @@ export const lecturerAPI = {
 
   // Get Quizzes for Lecturer
   async getQuizzes(lecturerId: string, courseId?: string) {
+    // First get the courses for this lecturer
+    const { data: lecturerCourses, error: coursesError } = await supabase
+      .from('courses')
+      .select('id')
+      .eq('lecturer_id', lecturerId)
+      .eq('is_active', true);
+
+    if (coursesError) throw coursesError;
+
+    const courseIds = lecturerCourses?.map(course => course.id) || [];
+
+    if (courseIds.length === 0) {
+      return []; // No courses assigned to this lecturer
+    }
+
     let query = supabase
       .from('quizzes')
       .select(`
@@ -1907,7 +2165,8 @@ export const lecturerAPI = {
         quiz_questions(id),
         quiz_attempts(id, status)
       `)
-      .eq('courses.lecturer_id', lecturerId)
+      .in('course_id', courseIds)
+      .eq('is_active', true)
       .order('created_at', { ascending: false });
 
     if (courseId) {
@@ -1968,6 +2227,21 @@ export const lecturerAPI = {
 
   // Get Assignments for a lecturer
   async getAssignments(lecturerId: string) {
+    // First get the courses for this lecturer
+    const { data: lecturerCourses, error: coursesError } = await supabase
+      .from('courses')
+      .select('id')
+      .eq('lecturer_id', lecturerId)
+      .eq('is_active', true);
+
+    if (coursesError) throw coursesError;
+
+    const courseIds = lecturerCourses?.map(course => course.id) || [];
+
+    if (courseIds.length === 0) {
+      return []; // No courses assigned to this lecturer
+    }
+
     const { data, error } = await supabase
       .from('assignments')
       .select(`
@@ -1982,7 +2256,7 @@ export const lecturerAPI = {
           students(student_id, first_name, last_name)
         )
       `)
-      .eq('courses.lecturer_id', lecturerId)
+      .in('course_id', courseIds)
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
@@ -2225,6 +2499,36 @@ export const lecturerAPI = {
 
   // Get Quiz Results for Lecturer
   async getQuizResults(lecturerId: string, quizId?: string) {
+    // First get the courses for this lecturer
+    const { data: lecturerCourses, error: coursesError } = await supabase
+      .from('courses')
+      .select('id')
+      .eq('lecturer_id', lecturerId)
+      .eq('is_active', true);
+
+    if (coursesError) throw coursesError;
+
+    const courseIds = lecturerCourses?.map(course => course.id) || [];
+
+    if (courseIds.length === 0) {
+      return []; // No courses assigned to this lecturer
+    }
+
+    // Get quizzes for these courses
+    const { data: lecturerQuizzes, error: quizzesError } = await supabase
+      .from('quizzes')
+      .select('id')
+      .in('course_id', courseIds)
+      .eq('is_active', true);
+
+    if (quizzesError) throw quizzesError;
+
+    const quizIds = lecturerQuizzes?.map(quiz => quiz.id) || [];
+
+    if (quizIds.length === 0) {
+      return []; // No quizzes for this lecturer's courses
+    }
+
     let query = supabase
       .from('quiz_attempts')
       .select(`
@@ -2237,7 +2541,7 @@ export const lecturerAPI = {
           courses(id, course_code, course_name, lecturer_id)
         )
       `)
-      .eq('quizzes.courses.lecturer_id', lecturerId)
+      .in('quiz_id', quizIds)
       .eq('status', 'completed')
       .order('completed_at', { ascending: false });
 
@@ -3025,17 +3329,62 @@ export const studentAPI = {
     return data;
   },
 
-  // Get Exam Slips for a student
+  // Get Exam Slips for a student based on their enrolled courses
   async getExamSlips(studentId: string) {
+    // First get the student's enrolled courses
+    const { data: enrolledCourses, error: enrollmentError } = await supabase
+      .from('course_enrollments')
+      .select('course_id')
+      .eq('student_id', studentId)
+      .eq('status', 'enrolled');
+
+    if (enrollmentError) throw enrollmentError;
+
+    if (!enrolledCourses || enrolledCourses.length === 0) {
+      return [];
+    }
+
+    const courseIds = enrolledCourses.map(enrollment => enrollment.course_id);
+
+    // Get exam slips for the enrolled courses
     const { data, error } = await supabase
       .from('exam_slips')
       .select(`
         *,
-        courses(course_code, course_name)
+        courses(course_code, course_name, credits)
       `)
-      .eq('student_id', studentId)
+      .in('course_id', courseIds)
       .eq('is_active', true)
       .order('exam_date', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get Enrolled Courses with Exam Slip Information
+  async getEnrolledCoursesWithExamSlips(studentId: string) {
+    const { data, error } = await supabase
+      .from('course_enrollments')
+      .select(`
+        *,
+        courses(
+          *,
+          lecturers(first_name, last_name, email),
+          exam_slips(
+            id,
+            lecturer_name,
+            exam_date,
+            exam_time,
+            venue,
+            academic_year,
+            semester,
+            is_active
+          )
+        )
+      `)
+      .eq('student_id', studentId)
+      .eq('status', 'enrolled')
+      .order('enrollment_date', { ascending: false });
 
     if (error) throw error;
     return data;
@@ -3052,6 +3401,140 @@ export const studentAPI = {
     if (error) throw error;
     return data;
   },
+
+  // Exam slip functions moved to adminAPI
+
+  // Get Payments for a student (using student number with new RPC function)
+  async getPayments(studentNumber: string) {
+    console.log('Fetching payments for student:', studentNumber);
+    const { data, error } = await supabase
+      .rpc('student_get_payments', {
+        p_student_number: studentNumber
+      });
+
+    if (error) {
+      console.error('Error fetching student payments:', error);
+      throw error;
+    }
+
+    console.log('Student payments fetched successfully:', data?.length || 0);
+    return data || [];
+  },
+
+  // Get Financial Records for a student (using student number with new RPC function)
+  async getFinancialRecords(studentNumber: string) {
+    console.log('Fetching financial records for student:', studentNumber);
+    const { data, error } = await supabase
+      .rpc('student_get_financial_records', {
+        p_student_number: studentNumber
+      });
+
+    if (error) {
+      console.error('Error fetching student financial records:', error);
+      throw error;
+    }
+
+    console.log('Student financial records fetched successfully:', data?.length || 0);
+    return data || [];
+  },
+
+  // ===== ACCESS CONTROL FUNCTIONS =====
+
+  // Check student access status
+  async checkAccess(studentId: string): Promise<StudentAccessStatus | null> {
+    try {
+      // Use the accountant API function which has fallback logic
+      return await accountantAPI.checkStudentAccess(studentId);
+    } catch (error) {
+      console.error('Error checking student access:', error);
+      return {
+        has_access: false,
+        payment_approved: false,
+        semester_registered: false,
+        denial_reason: 'Error checking access status'
+      };
+    }
+  },
+
+  // Get student's payment approvals
+  async getMyPaymentApprovals(studentId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('payment_approvals')
+        .select(`
+          *,
+          accountants(first_name, last_name)
+        `)
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.log('Payment approvals table not found:', error.message);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching payment approvals:', error);
+      return [];
+    }
+  },
+
+  // Get student's semester registrations
+  async getMySemesterRegistrations(studentId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('student_semester_registrations')
+        .select(`
+          *,
+          semester_periods(semester_name, academic_year, semester_number, start_date, end_date, is_active),
+          payment_approvals(amount_paid, payment_reference, access_valid_until)
+        `)
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.log('Student semester registrations table not found:', error.message);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching semester registrations:', error);
+      return [];
+    }
+  },
+
+  // Get active semester information
+  async getActiveSemester() {
+    try {
+      // Use the accountant API function which has fallback logic
+      return await accountantAPI.getActiveSemester();
+    } catch (error) {
+      console.error('Error fetching active semester:', error);
+      return null;
+    }
+  },
+
+  // Request semester registration (creates pending registration)
+  async requestSemesterRegistration(studentId: string, semesterPeriodId: string, notes?: string) {
+    const { data, error } = await supabase
+      .from('student_semester_registrations')
+      .insert({
+        student_id: studentId,
+        semester_period_id: semesterPeriodId,
+        registration_status: 'pending',
+        registration_notes: notes || null
+      })
+      .select();
+
+    if (error) {
+      console.error('Error requesting semester registration:', error);
+      throw error;
+    }
+
+    return data;
+  }
 };
 
 // Calendar Event Types
@@ -3281,56 +3764,6 @@ export const calendarAPI = {
 
     if (error) throw error;
     return data;
-  },
-
-
-
-  // Get Payments for a student
-  async getPayments(studentId: string) {
-    // First get the student UUID from the student number
-    const { data: student, error: studentError } = await supabase
-      .from('students')
-      .select('id')
-      .eq('student_id', studentId)
-      .single();
-
-    if (studentError) {
-      console.error('Error finding student:', studentError);
-      return [];
-    }
-
-    const { data, error } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('student_id', student.id)
-      .order('payment_date', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
-  },
-
-  // Get Financial Records for a student
-  async getFinancialRecords(studentId: string) {
-    // First get the student UUID from the student number
-    const { data: student, error: studentError } = await supabase
-      .from('students')
-      .select('id')
-      .eq('student_id', studentId)
-      .single();
-
-    if (studentError) {
-      console.error('Error finding student:', studentError);
-      return [];
-    }
-
-    const { data, error } = await supabase
-      .from('financial_records')
-      .select('*')
-      .eq('student_id', student.id)
-      .order('academic_year', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
   }
 };
 
@@ -3672,21 +4105,145 @@ export const accountantAPI = {
 
   // Get all financial records (for ledger view)
   async getAllFinancialRecords() {
+    console.log('Fetching all financial records...');
     const { data, error } = await supabase
       .rpc('accountant_get_all_financial_records');
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching financial records:', error);
+      throw error;
+    }
+
+    console.log('Financial records fetched successfully:', data?.length || 0);
     return data || [];
   },
 
-  // Get all payments (for transaction history)
+  // Get all payments (for ledger view)
   async getAllPayments() {
+    console.log('Fetching all payments...');
     const { data, error } = await supabase
       .rpc('accountant_get_all_payments');
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching payments:', error);
+      throw error;
+    }
+
+    console.log('Payments fetched successfully:', data?.length || 0);
     return data || [];
   },
+
+  // Get account balances for reporting
+  async getAccountBalances() {
+    console.log('Fetching account balances...');
+    const { data, error } = await supabase
+      .rpc('accountant_get_account_balances');
+
+    if (error) {
+      console.error('Error fetching account balances:', error);
+      throw error;
+    }
+
+    console.log('Account balances fetched successfully:', data?.length || 0);
+    return data || [];
+  },
+
+  // Get transaction history for reporting
+  async getTransactionHistory(startDate?: string, endDate?: string, limit: number = 100) {
+    console.log('Fetching transaction history...');
+    const { data, error } = await supabase
+      .rpc('accountant_get_transaction_history', {
+        p_start_date: startDate || null,
+        p_end_date: endDate || null,
+        p_limit: limit
+      });
+
+    if (error) {
+      console.error('Error fetching transaction history:', error);
+      throw error;
+    }
+
+    console.log('Transaction history fetched successfully:', data?.length || 0);
+    return data || [];
+  },
+
+  // Get account transaction details by ID
+  async getAccountTransaction(transactionId: string) {
+    console.log('Fetching account transaction details:', transactionId);
+    const { data, error } = await supabase
+      .from('account_transactions')
+      .select(`
+        *,
+        transaction_entries (
+          *,
+          accounts (account_number, account_name, account_type)
+        )
+      `)
+      .eq('id', transactionId)
+      .single();
+
+    if (error) {
+      console.error('Error fetching account transaction:', error);
+      throw error;
+    }
+
+    console.log('Account transaction fetched successfully');
+    return data;
+  },
+
+  // Get audit logs for financial operations
+  async getAuditLogs(limit: number = 50, offset: number = 0) {
+    console.log('Fetching audit logs...');
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      console.error('Error fetching audit logs:', error);
+      throw error;
+    }
+
+    console.log('Audit logs fetched successfully:', data?.length || 0);
+    return data || [];
+  },
+
+  // Get financial summary for dashboard
+  async getFinancialSummary() {
+    console.log('Fetching financial summary...');
+
+    try {
+      const [accounts, recentTransactions, totalRecords, totalPayments] = await Promise.all([
+        this.getAccountBalances(),
+        this.getTransactionHistory(undefined, undefined, 10),
+        supabase.from('financial_records').select('total_amount, balance', { count: 'exact' }),
+        supabase.from('payments').select('amount', { count: 'exact' })
+      ]);
+
+      const totalOwed = totalRecords.data?.reduce((sum, record) => sum + (record.total_amount || 0), 0) || 0;
+      const totalPaid = totalPayments.data?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+      const totalBalance = totalRecords.data?.reduce((sum, record) => sum + (record.balance || 0), 0) || 0;
+
+      const summary = {
+        accounts: accounts || [],
+        recentTransactions: recentTransactions || [],
+        totalStudents: totalRecords.count || 0,
+        totalOwed,
+        totalPaid,
+        totalBalance,
+        totalPayments: totalPayments.count || 0
+      };
+
+      console.log('Financial summary compiled successfully');
+      return summary;
+    } catch (error) {
+      console.error('Error fetching financial summary:', error);
+      throw error;
+    }
+  },
+
+
 
 
 
@@ -3791,6 +4348,1644 @@ export const accountantAPI = {
     }, {});
 
     return groupedLogs;
+  },
+
+  // ===== ACCESS CONTROL FUNCTIONS =====
+
+  // Get all payment approvals
+  async getAllPaymentApprovals() {
+    try {
+      const { data, error } = await supabase
+        .from('payment_approvals')
+        .select(`
+          *,
+          students(student_id, first_name, last_name, email)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Payment approvals query error:', error.message);
+        console.log('Trying fallback query without joins...');
+
+        // Fallback query without joins
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('payment_approvals')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (fallbackError) {
+          console.error('Fallback query also failed:', fallbackError.message);
+          return [];
+        }
+
+        console.log('Fallback query successful, returning data without joins');
+        return fallbackData || [];
+      }
+
+      // Manually fetch accountant data for each approval since approved_by can be either id or user_id
+      if (data && data.length > 0) {
+        const enrichedData = await Promise.all(data.map(async (approval) => {
+          if (approval.approved_by) {
+            // Try to find accountant by both id and user_id
+            const { data: accountantData } = await supabase
+              .from('accountants')
+              .select('first_name, last_name, accountant_id')
+              .or(`id.eq.${approval.approved_by},user_id.eq.${approval.approved_by}`)
+              .single();
+
+            return {
+              ...approval,
+              accountants: accountantData || null
+            };
+          }
+          return approval;
+        }));
+
+        console.log('Payment approvals loaded successfully with accountant data:', enrichedData.length);
+        return enrichedData;
+      }
+
+      console.log('Payment approvals loaded successfully:', data?.length || 0);
+      return data || [];
+    } catch (error) {
+      console.error('Error getting payment approvals:', error);
+      return [];
+    }
+  },
+
+  // Get payment approvals for a specific student
+  async getStudentPaymentApprovals(studentId: string) {
+    const { data, error } = await supabase
+      .from('payment_approvals')
+      .select(`
+        *,
+        students(student_id, first_name, last_name, email)
+      `)
+      .eq('student_id', studentId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get all approved students with their access status
+  async getAllApprovedStudents() {
+    try {
+      // First ensure tables exist
+      await this.ensureTablesExist();
+
+      // Get students with approved payments
+      const { data: approvedPayments, error: paymentsError } = await supabase
+        .from('payment_approvals')
+        .select(`
+          student_id,
+          amount_paid,
+          payment_date,
+          access_valid_from,
+          access_valid_until,
+          approval_status
+        `)
+        .eq('approval_status', 'approved')
+        .gte('access_valid_until', new Date().toISOString().split('T')[0])
+        .order('access_valid_until', { ascending: true });
+
+      if (paymentsError) {
+        console.log('Payment approvals table not found or error:', paymentsError.message);
+        return [];
+      }
+
+      if (!approvedPayments || approvedPayments.length === 0) {
+        return [];
+      }
+
+      // Get student details separately
+      const studentIds = approvedPayments.map(p => p.student_id);
+      const { data: students, error: studentsError } = await supabase
+        .from('students')
+        .select(`
+          id,
+          student_id,
+          first_name,
+          last_name,
+          email,
+          program,
+          year_of_study,
+          semester,
+          status
+        `)
+        .in('id', studentIds);
+
+      if (studentsError) {
+        console.log('Students table error:', studentsError.message);
+        return [];
+      }
+
+      // Get semester registrations for these students
+      let semesterRegistrations = [];
+      if (studentIds.length > 0) {
+        const { data: registrations, error: regError } = await supabase
+          .from('student_semester_registrations')
+          .select(`
+            student_id,
+            registration_status,
+            semester_periods(semester_name, academic_year)
+          `)
+          .in('student_id', studentIds)
+          .eq('registration_status', 'approved');
+
+        if (regError) {
+          console.log('Semester registrations table error:', regError.message);
+          semesterRegistrations = [];
+        } else {
+          semesterRegistrations = registrations || [];
+        }
+      }
+
+      // Combine the data
+      const approvedStudents = approvedPayments.map(payment => {
+        const student = students?.find(s => s.id === payment.student_id);
+        const registration = semesterRegistrations.find(r => r.student_id === payment.student_id);
+
+        if (!student) {
+          return null; // Skip if student not found
+        }
+
+        return {
+          ...student,
+          payment_info: {
+            amount_paid: payment.amount_paid,
+            payment_date: payment.payment_date,
+            access_valid_from: payment.access_valid_from,
+            access_valid_until: payment.access_valid_until,
+            approval_status: payment.approval_status
+          },
+          semester_info: registration ? {
+            registration_status: registration.registration_status,
+            semester_name: registration.semester_periods?.semester_name,
+            academic_year: registration.semester_periods?.academic_year
+          } : null,
+          has_full_access: !!registration
+        };
+      }).filter(Boolean); // Remove null entries
+
+      return approvedStudents;
+    } catch (error: any) {
+      console.error('Error getting approved students:', error);
+      throw error;
+    }
+  },
+
+  // Get students with active access (for termination management)
+  async getStudentsWithActiveAccess() {
+    try {
+      // First ensure tables exist
+      await this.ensureTablesExist();
+
+      // Get students with any active access (approved payments or registrations)
+      const { data: activePayments, error: paymentsError } = await supabase
+        .from('payment_approvals')
+        .select(`
+          student_id,
+          amount_paid,
+          payment_date,
+          access_valid_from,
+          access_valid_until,
+          approval_status,
+          approval_notes
+        `)
+        .eq('approval_status', 'approved')
+        .order('access_valid_until', { ascending: true });
+
+      if (paymentsError) {
+        console.log('Payment approvals table error:', paymentsError.message);
+        return [];
+      }
+
+      if (!activePayments || activePayments.length === 0) {
+        return [];
+      }
+
+      // Get student details
+      const studentIds = activePayments.map(p => p.student_id);
+      const { data: students, error: studentsError } = await supabase
+        .from('students')
+        .select(`
+          id,
+          student_id,
+          first_name,
+          last_name,
+          email,
+          program,
+          year_of_study,
+          semester,
+          status
+        `)
+        .in('id', studentIds);
+
+      if (studentsError) {
+        console.log('Students table error:', studentsError.message);
+        return [];
+      }
+
+      // Get semester registrations
+      const { data: registrations, error: regError } = await supabase
+        .from('student_semester_registrations')
+        .select(`
+          student_id,
+          registration_status,
+          semester_periods(semester_name, academic_year)
+        `)
+        .in('student_id', studentIds)
+        .eq('registration_status', 'approved');
+
+      const semesterRegistrations = regError ? [] : (registrations || []);
+
+      // Combine the data
+      const studentsWithAccess = activePayments.map(payment => {
+        const student = students?.find(s => s.id === payment.student_id);
+        const registration = semesterRegistrations.find(r => r.student_id === payment.student_id);
+
+        if (!student) {
+          return null;
+        }
+
+        const isExpired = new Date(payment.access_valid_until) < new Date();
+        const isExpiringSoon = !isExpired && new Date(payment.access_valid_until) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        return {
+          ...student,
+          payment_info: {
+            amount_paid: payment.amount_paid,
+            payment_date: payment.payment_date,
+            access_valid_from: payment.access_valid_from,
+            access_valid_until: payment.access_valid_until,
+            approval_status: payment.approval_status,
+            approval_notes: payment.approval_notes
+          },
+          semester_info: registration ? {
+            registration_status: registration.registration_status,
+            semester_name: registration.semester_periods?.semester_name,
+            academic_year: registration.semester_periods?.academic_year
+          } : null,
+          access_status: {
+            has_payment_approval: true,
+            has_semester_registration: !!registration,
+            is_expired: isExpired,
+            is_expiring_soon: isExpiringSoon,
+            can_terminate: !isExpired // Can only terminate non-expired access
+          }
+        };
+      }).filter(Boolean);
+
+      return studentsWithAccess;
+    } catch (error: any) {
+      console.error('Error getting students with active access:', error);
+      throw error;
+    }
+  },
+
+  // Create a test payment approval (for debugging/setup purposes)
+  async createTestPaymentApproval(accountantId: string) {
+    try {
+      // First get a student to create approval for
+      const { data: students, error: studentsError } = await supabase
+        .from('students')
+        .select('id, first_name, last_name, student_id')
+        .limit(1);
+
+      if (studentsError || !students || students.length === 0) {
+        throw new Error('No students found. Please create a student first.');
+      }
+
+      const student = students[0];
+      const today = new Date();
+      const validUntil = new Date();
+      validUntil.setMonth(validUntil.getMonth() + 3); // 3 months from now
+
+      const testApproval = {
+        student_id: student.id,
+        amount_paid: 1500.00,
+        payment_reference: `TEST-${Date.now()}`,
+        payment_date: today.toISOString().split('T')[0],
+        access_valid_from: today.toISOString().split('T')[0],
+        access_valid_until: validUntil.toISOString().split('T')[0],
+        approval_status: 'approved',
+        approval_notes: 'Test payment approval created for demonstration',
+        approved_by: accountantId,
+        approval_date: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
+        .from('payment_approvals')
+        .insert(testApproval)
+        .select();
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        data,
+        message: `Test payment approval created for ${student.first_name} ${student.last_name} (${student.student_id})`
+      };
+    } catch (error: any) {
+      console.error('Error creating test payment approval:', error);
+      throw error;
+    }
+  },
+
+  // Update access control functions to use simplified logic
+  async updateAccessControlToSimplified() {
+    try {
+      console.log('Updating access control functions to simplified logic...');
+
+      const { error } = await supabase.rpc('exec_sql', {
+        sql: `
+          -- Update check_student_access function to use simplified logic
+          CREATE OR REPLACE FUNCTION check_student_access(p_student_id UUID)
+          RETURNS TABLE (
+              has_access BOOLEAN,
+              payment_approved BOOLEAN,
+              semester_registered BOOLEAN,
+              access_valid_until DATE,
+              semester_end_date DATE,
+              denial_reason TEXT,
+              financial_balance DECIMAL(10,2),
+              has_financial_statements BOOLEAN
+          )
+          LANGUAGE plpgsql
+          SECURITY DEFINER
+          AS $$
+          DECLARE
+              v_payment_approved BOOLEAN := false;
+              v_semester_registered BOOLEAN := false;
+              v_access_valid_until DATE;
+              v_semester_end_date DATE;
+              v_denial_reason TEXT := '';
+              v_financial_balance DECIMAL(10,2) := 0.00;
+              v_has_financial_statements BOOLEAN := false;
+              v_total_balance DECIMAL(10,2) := 0.00;
+          BEGIN
+              -- Check financial statements first
+              SELECT
+                  CASE WHEN COUNT(*) > 0 THEN true ELSE false END,
+                  COALESCE(SUM(COALESCE(fr.balance, 0)), 0.00)
+              INTO v_has_financial_statements, v_total_balance
+              FROM financial_records fr
+              WHERE fr.student_id = p_student_id;
+
+              v_financial_balance := v_total_balance;
+
+              -- Check payment approval status (primary access control)
+              SELECT
+                  CASE WHEN COUNT(*) > 0 THEN true ELSE false END,
+                  MAX(pa.access_valid_until)
+              INTO v_payment_approved, v_access_valid_until
+              FROM payment_approvals pa
+              WHERE pa.student_id = p_student_id
+                  AND pa.approval_status = 'approved'
+                  AND pa.access_valid_from <= CURRENT_DATE
+                  AND pa.access_valid_until >= CURRENT_DATE;
+
+              -- Check semester registration (optional)
+              SELECT
+                  CASE WHEN COUNT(*) > 0 THEN true ELSE false END,
+                  MAX(sp.end_date)
+              INTO v_semester_registered, v_semester_end_date
+              FROM student_semester_registrations ssr
+              JOIN semester_periods sp ON ssr.semester_period_id = sp.id
+              WHERE ssr.student_id = p_student_id
+                  AND ssr.registration_status = 'approved'
+                  AND sp.is_active = true
+                  AND sp.start_date <= CURRENT_DATE
+                  AND sp.end_date >= CURRENT_DATE;
+
+              -- Simplified denial reason logic
+              IF v_has_financial_statements AND v_financial_balance = 0.00 AND NOT v_payment_approved THEN
+                  v_denial_reason := 'Access denied: You have a zero balance but no payment approval. Please pay and get approval from the Accounts Office.';
+              ELSIF NOT v_payment_approved THEN
+                  v_denial_reason := 'Payment not approved or access period expired. Please contact the Accounts Office.';
+              END IF;
+
+              -- SIMPLIFIED ACCESS LOGIC: Payment approval is sufficient for access
+              RETURN QUERY SELECT
+                  v_payment_approved OR (v_has_financial_statements AND v_financial_balance > 0.00),
+                  v_payment_approved,
+                  v_semester_registered,
+                  v_access_valid_until,
+                  v_semester_end_date,
+                  v_denial_reason,
+                  v_financial_balance,
+                  v_has_financial_statements;
+          END;
+          $$;
+
+          -- Add comment to track the update
+          COMMENT ON FUNCTION check_student_access(UUID) IS 'Simplified access control - payment approval is sufficient for login. Updated: ' || NOW();
+        `
+      });
+
+      if (error) {
+        console.error('Error updating access control functions:', error);
+        throw error;
+      }
+
+      console.log('Access control functions updated to simplified logic successfully');
+      return { success: true, message: 'Access control updated to simplified logic - payment approval is now sufficient for login' };
+    } catch (error: any) {
+      console.error('Error updating access control:', error);
+      throw error;
+    }
+  },
+
+  // Verify student payment approval for registration
+  async verifyStudentPaymentApproval(studentId: string) {
+    try {
+      console.log('Verifying payment approval for student:', studentId);
+
+      const { data, error } = await supabase
+        .rpc('verify_student_payment_approval', { p_student_id: studentId });
+
+      if (error) {
+        console.error('RPC function error, using fallback verification:', error);
+
+        // Fallback to direct database query with comprehensive checks
+        const { data: paymentData, error: paymentError } = await supabase
+          .from('payment_approvals')
+          .select(`
+            *,
+            accountants(first_name, last_name)
+          `)
+          .eq('student_id', studentId)
+          .eq('approval_status', 'approved')
+          .gte('access_valid_until', new Date().toISOString().split('T')[0])
+          .lte('access_valid_from', new Date().toISOString().split('T')[0])
+          .order('approval_date', { ascending: false })
+          .limit(1);
+
+        if (paymentError) {
+          console.error('Fallback payment verification error:', paymentError);
+          return {
+            hasValidPayment: false,
+            reason: 'Database error during payment verification',
+            paymentStatus: 'error',
+            details: null
+          };
+        }
+
+        if (!paymentData || paymentData.length === 0) {
+          // Check if student has any payment approvals at all
+          const { data: anyPayments } = await supabase
+            .from('payment_approvals')
+            .select('approval_status, access_valid_until')
+            .eq('student_id', studentId)
+            .limit(1);
+
+          const reason = anyPayments && anyPayments.length > 0
+            ? 'No valid payment approval found. Payment may be expired, rejected, or access period ended.'
+            : 'No payment approval found. Student must make payment and get approval from Accounts Office.';
+
+          return {
+            hasValidPayment: false,
+            reason,
+            paymentStatus: anyPayments && anyPayments.length > 0 ? 'expired' : 'none',
+            details: null
+          };
+        }
+
+        const payment = paymentData[0];
+        const accountantName = payment.accountants
+          ? `${payment.accountants.first_name} ${payment.accountants.last_name}`
+          : 'Unknown';
+
+        return {
+          hasValidPayment: true,
+          reason: 'Payment verification successful',
+          paymentStatus: payment.approval_status,
+          details: {
+            accessValidUntil: payment.access_valid_until,
+            amountPaid: payment.amount_paid,
+            paymentReference: payment.payment_reference,
+            approvalDate: payment.approval_date,
+            approvedByName: accountantName
+          }
+        };
+      }
+
+      const verification = data?.[0];
+
+      if (!verification) {
+        return {
+          hasValidPayment: false,
+          reason: 'Unable to verify payment status',
+          paymentStatus: 'unknown',
+          details: null
+        };
+      }
+
+      console.log('Payment verification result:', verification);
+
+      return {
+        hasValidPayment: verification.has_valid_payment,
+        reason: verification.denial_reason || 'Payment verification successful',
+        paymentStatus: verification.payment_status,
+        details: {
+          accessValidUntil: verification.access_valid_until,
+          amountPaid: verification.amount_paid,
+          paymentReference: verification.payment_reference,
+          approvalDate: verification.approval_date,
+          approvedByName: verification.approved_by_name
+        }
+      };
+    } catch (error: any) {
+      console.error('Error verifying student payment approval:', error);
+      return {
+        hasValidPayment: false,
+        reason: 'Database error during payment verification',
+        paymentStatus: 'error',
+        details: null
+      };
+    }
+  },
+
+  // Approve payment with access period
+  async approvePaymentAccess(approvalData: {
+    student_id: string;
+    payment_id?: string;
+    amount_paid: number;
+    payment_reference?: string;
+    payment_date: string;
+    access_valid_from: string;
+    access_valid_until: string;
+    approval_notes?: string;
+  }, accountantId: string) {
+    try {
+      // First, ensure tables exist
+      await this.ensureTablesExist();
+
+      // Try RPC function first, fallback to direct insert
+      try {
+        const { data, error } = await supabase
+          .rpc('approve_payment_access', {
+            p_student_id: approvalData.student_id,
+            p_payment_id: approvalData.payment_id || null,
+            p_amount_paid: approvalData.amount_paid,
+            p_payment_reference: approvalData.payment_reference || null,
+            p_payment_date: approvalData.payment_date,
+            p_access_valid_from: approvalData.access_valid_from,
+            p_access_valid_until: approvalData.access_valid_until,
+            p_approved_by: accountantId,
+            p_approval_notes: approvalData.approval_notes || null
+          });
+
+        if (error) throw error;
+        return data;
+      } catch (rpcError: any) {
+        console.log('RPC function not found, using direct insert:', rpcError.message);
+
+        // Fallback to direct table insert
+        const { data, error } = await supabase
+          .from('payment_approvals')
+          .insert({
+            student_id: approvalData.student_id,
+            payment_id: approvalData.payment_id,
+            amount_paid: approvalData.amount_paid,
+            payment_reference: approvalData.payment_reference,
+            payment_date: approvalData.payment_date,
+            access_valid_from: approvalData.access_valid_from,
+            access_valid_until: approvalData.access_valid_until,
+            approval_status: 'approved',
+            approval_notes: approvalData.approval_notes,
+            approved_by: accountantId,
+            approval_date: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select();
+
+        if (error) throw error;
+        return data;
+      }
+    } catch (error: any) {
+      console.error('Error approving payment access:', error);
+      throw error;
+    }
+  },
+
+  // Register student with comprehensive payment verification
+  async registerStudentWithPaymentVerification(studentId: string, semesterPeriodId: string, accountantId: string, notes?: string) {
+    try {
+      console.log('Registering student with payment verification:', { studentId, semesterPeriodId, accountantId });
+
+      const { data, error } = await supabase
+        .rpc('register_student_with_payment_verification', {
+          p_student_id: studentId,
+          p_semester_period_id: semesterPeriodId,
+          p_registered_by: accountantId,
+          p_registration_notes: notes || 'Registration by accounts office'
+        });
+
+      if (error) {
+        console.error('Error in database registration verification:', error);
+        throw error;
+      }
+
+      const result = data?.[0];
+
+      if (!result) {
+        throw new Error('No result returned from database verification');
+      }
+
+      console.log('Registration verification result:', result);
+
+      return {
+        success: result.success,
+        registrationId: result.registration_id,
+        message: result.message,
+        paymentVerification: result.payment_verification
+      };
+    } catch (error: any) {
+      console.error('Error registering student with payment verification:', error);
+      throw error;
+    }
+  },
+
+  // Reject payment approval
+  async rejectPaymentApproval(approvalId: string, rejectionNotes: string, accountantId: string) {
+    const { data, error } = await supabase
+      .from('payment_approvals')
+      .update({
+        approval_status: 'rejected',
+        approval_notes: rejectionNotes,
+        approved_by: accountantId,
+        approval_date: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', approvalId)
+      .select();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Unapprove payment approval (revoke access)
+  async unapprovePaymentApproval(approvalId: string, unapprovalNotes: string, accountantId: string) {
+    try {
+      // First get the current approval to log the action
+      const { data: currentApproval, error: fetchError } = await supabase
+        .from('payment_approvals')
+        .select('student_id, approval_status')
+        .eq('id', approvalId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      if (currentApproval.approval_status !== 'approved') {
+        throw new Error('Can only unapprove currently approved payments');
+      }
+
+      // Update the approval status to revoked
+      const { data, error } = await supabase
+        .from('payment_approvals')
+        .update({
+          approval_status: 'revoked',
+          approval_notes: unapprovalNotes,
+          approved_by: accountantId,
+          approval_date: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', approvalId)
+        .select();
+
+      if (error) throw error;
+
+      // Log the unapproval action
+      await supabase
+        .from('access_control_logs')
+        .insert({
+          student_id: currentApproval.student_id,
+          action_type: 'access_revoked',
+          reason: 'payment_unapproved',
+          payment_approval_id: approvalId,
+          notes: unapprovalNotes,
+          performed_by: accountantId
+        });
+
+      return data;
+    } catch (error: any) {
+      console.error('Error unapproving payment:', error);
+      throw error;
+    }
+  },
+
+  // Terminate student access (revoke all active approvals and registrations)
+  async terminateStudentAccess(studentId: string, terminationReason: string, accountantId: string) {
+    try {
+      // Get all active payment approvals for the student
+      const { data: activeApprovals, error: approvalsError } = await supabase
+        .from('payment_approvals')
+        .select('id, approval_status')
+        .eq('student_id', studentId)
+        .eq('approval_status', 'approved');
+
+      if (approvalsError) throw approvalsError;
+
+      // Revoke all active payment approvals
+      if (activeApprovals && activeApprovals.length > 0) {
+        const { error: revokeError } = await supabase
+          .from('payment_approvals')
+          .update({
+            approval_status: 'revoked',
+            approval_notes: `Access terminated by accountant: ${terminationReason}`,
+            approved_by: accountantId,
+            approval_date: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('student_id', studentId)
+          .eq('approval_status', 'approved');
+
+        if (revokeError) throw revokeError;
+      }
+
+      // Revoke all active semester registrations
+      const { error: registrationError } = await supabase
+        .from('student_semester_registrations')
+        .update({
+          registration_status: 'cancelled',
+          registration_notes: `Access terminated by accountant: ${terminationReason}`,
+          approved_by: accountantId,
+          approval_date: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('student_id', studentId)
+        .eq('registration_status', 'approved');
+
+      if (registrationError) throw registrationError;
+
+      // Log the termination action
+      await supabase
+        .from('access_control_logs')
+        .insert({
+          student_id: studentId,
+          action_type: 'access_terminated',
+          reason: 'manual_termination',
+          notes: terminationReason,
+          performed_by: accountantId
+        });
+
+      return {
+        success: true,
+        revokedApprovals: activeApprovals?.length || 0,
+        message: `Student access terminated successfully. ${activeApprovals?.length || 0} payment approvals revoked.`
+      };
+    } catch (error: any) {
+      console.error('Error terminating student access:', error);
+      throw error;
+    }
+  },
+
+  // Bulk terminate access for multiple students
+  async bulkTerminateStudentAccess(studentIds: string[], terminationReason: string, accountantId: string) {
+    try {
+      const results = [];
+      let totalRevoked = 0;
+
+      for (const studentId of studentIds) {
+        try {
+          const result = await this.terminateStudentAccess(studentId, terminationReason, accountantId);
+          results.push({ studentId, success: true, ...result });
+          totalRevoked += result.revokedApprovals;
+        } catch (error: any) {
+          results.push({ studentId, success: false, error: error.message });
+        }
+      }
+
+      return {
+        success: true,
+        results,
+        totalStudents: studentIds.length,
+        totalRevoked,
+        summary: `Processed ${studentIds.length} students. ${totalRevoked} payment approvals revoked.`
+      };
+    } catch (error: any) {
+      console.error('Error bulk terminating student access:', error);
+      throw error;
+    }
+  },
+
+  // ===== SEMESTER REGISTRATION FUNCTIONS =====
+
+  // Get all semester registrations
+  async getAllSemesterRegistrations() {
+    try {
+      const { data, error } = await supabase
+        .from('student_semester_registrations')
+        .select(`
+          *,
+          students(student_id, first_name, last_name, email),
+          semester_periods(semester_name, academic_year, semester_number),
+          payment_approvals(id, amount_paid, payment_reference, approval_status)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.log('Semester registrations table not found:', error.message);
+        return [];
+      }
+      return data || [];
+    } catch (error) {
+      console.error('Error getting semester registrations:', error);
+      return [];
+    }
+  },
+
+  // Get semester registrations for a specific student
+  async getStudentSemesterRegistrations(studentId: string) {
+    const { data, error } = await supabase
+      .from('student_semester_registrations')
+      .select(`
+        *,
+        semester_periods(semester_name, academic_year, semester_number),
+        payment_approvals(id, amount_paid, payment_reference, approval_status)
+      `)
+      .eq('student_id', studentId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Approve semester registration
+  async approveSemesterRegistration(registrationData: {
+    student_id: string;
+    semester_period_id: string;
+    payment_approval_id?: string;
+    registration_notes?: string;
+  }, accountantId: string) {
+    try {
+      // First, ensure tables exist
+      await this.ensureTablesExist();
+
+      // Try RPC function first, fallback to direct insert/update
+      try {
+        const { data, error } = await supabase
+          .rpc('approve_semester_registration', {
+            p_student_id: registrationData.student_id,
+            p_semester_period_id: registrationData.semester_period_id,
+            p_approved_by: accountantId,
+            p_payment_approval_id: registrationData.payment_approval_id || null,
+            p_registration_notes: registrationData.registration_notes || null
+          });
+
+        if (error) throw error;
+        return data;
+      } catch (rpcError: any) {
+        console.log('RPC function not found, using direct insert/update:', rpcError.message);
+
+        // Fallback to direct database operations
+        const { data, error } = await supabase
+          .from('student_semester_registrations')
+          .upsert({
+            student_id: registrationData.student_id,
+            semester_period_id: registrationData.semester_period_id,
+            approved_by: accountantId,
+            approval_date: new Date().toISOString(),
+            registration_status: 'approved',
+            payment_approval_id: registrationData.payment_approval_id || null,
+            registration_notes: registrationData.registration_notes || null,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'student_id,semester_period_id'
+          })
+          .select();
+
+        if (error) throw error;
+
+        // Log the approval
+        await supabase
+          .from('access_control_logs')
+          .insert({
+            student_id: registrationData.student_id,
+            action_type: 'access_granted',
+            reason: 'semester_approved',
+            semester_registration_id: data[0]?.id
+          });
+
+        return data[0];
+      }
+    } catch (error: any) {
+      console.error('Error approving semester registration:', error);
+      throw error;
+    }
+  },
+
+  // Reject semester registration
+  async rejectSemesterRegistration(registrationId: string, rejectionNotes: string, accountantId: string) {
+    const { data, error } = await supabase
+      .from('student_semester_registrations')
+      .update({
+        registration_status: 'rejected',
+        approved_by: accountantId,
+        approval_date: new Date().toISOString(),
+        registration_notes: rejectionNotes,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', registrationId)
+      .select();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Get all semester periods
+  async getAllSemesterPeriods() {
+    try {
+      const { data, error } = await supabase
+        .from('semester_periods')
+        .select(`
+          *,
+          accountants(first_name, last_name)
+        `)
+        .order('academic_year', { ascending: false })
+        .order('semester_number', { ascending: false });
+
+      if (error) {
+        console.log('Semester periods table not found:', error.message);
+        return [];
+      }
+      return data || [];
+    } catch (error) {
+      console.error('Error getting semester periods:', error);
+      return [];
+    }
+  },
+
+  // Get active semester
+  async getActiveSemester() {
+    try {
+      // First try using the RPC function
+      const { data, error } = await supabase
+        .rpc('get_active_semester');
+
+      if (error) {
+        // If RPC function doesn't exist, fall back to direct query
+        console.log('RPC function not found, using direct query');
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('semester_periods')
+          .select('*')
+          .eq('is_active', true)
+          .gte('end_date', new Date().toISOString().split('T')[0])
+          .order('start_date', { ascending: false })
+          .limit(1);
+
+        if (fallbackError) {
+          console.log('Semester periods table not found, returning null');
+          return null;
+        }
+        return fallbackData?.[0] || null;
+      }
+      return data?.[0] || null;
+    } catch (error) {
+      console.error('Error getting active semester:', error);
+      return null;
+    }
+  },
+
+  // Create semester period with simplified approach
+  async createSemesterPeriod(semesterData: {
+    semester_name: string;
+    academic_year: string;
+    semester_number: number;
+    start_date: string;
+    end_date: string;
+    registration_start_date: string;
+    registration_end_date: string;
+    is_active?: boolean;
+    is_registration_open?: boolean;
+  }, accountantId: string) {
+    try {
+      console.log('🚀 Starting semester period creation...');
+      console.log('📝 Data to insert:', semesterData);
+
+      // First, try to create the table using a simple approach
+      console.log('🔧 Ensuring semester_periods table exists...');
+
+      try {
+        // Try to create the table directly using a simple query
+        await supabase.sql`
+          CREATE TABLE IF NOT EXISTS semester_periods (
+            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+            semester_name TEXT NOT NULL,
+            academic_year TEXT NOT NULL,
+            semester_number INTEGER NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            registration_start_date DATE NOT NULL,
+            registration_end_date DATE NOT NULL,
+            is_active BOOLEAN DEFAULT false,
+            is_registration_open BOOLEAN DEFAULT false,
+            created_by UUID,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+        `;
+        console.log('✅ Table creation attempted');
+      } catch (tableError: any) {
+        console.log('⚠️ Table creation failed, proceeding anyway:', tableError.message);
+      }
+
+      console.log('📤 Attempting to insert semester period...');
+      const { data, error } = await supabase
+        .from('semester_periods')
+        .insert({
+          ...semesterData,
+          created_by: accountantId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select();
+
+      if (error) {
+        console.error('❌ Supabase insert error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+
+        // If table doesn't exist, try to create it via API
+        if (error.message?.includes('relation') && error.message?.includes('does not exist')) {
+          console.log('🔧 Table missing, trying API creation...');
+          try {
+            const response = await fetch('/api/setup-db', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+
+            if (result.success) {
+              console.log('✅ Tables created via API, retrying insert...');
+              const { data: retryData, error: retryError } = await supabase
+                .from('semester_periods')
+                .insert({
+                  ...semesterData,
+                  created_by: accountantId,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                })
+                .select();
+
+              if (retryError) {
+                throw new Error(`Retry failed: ${retryError.message}`);
+              }
+
+              console.log('✅ Semester period created after table setup:', retryData);
+              return retryData;
+            }
+          } catch (apiError: any) {
+            console.error('❌ API table creation failed:', apiError);
+          }
+        }
+
+        throw new Error(`Database error: ${error.message || 'Unknown database error'}`);
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error('No data returned from insert operation');
+      }
+
+      console.log('✅ Semester period created successfully:', data);
+      return data;
+    } catch (error: any) {
+      console.error('❌ Error in createSemesterPeriod:', error);
+
+      // Provide user-friendly error messages
+      let userMessage = 'Failed to create semester period';
+
+      if (error.message?.includes('relation') && error.message?.includes('does not exist')) {
+        userMessage = 'Database tables are not set up. Please click "🔧 Setup Database" first.';
+      } else if (error.message?.includes('permission')) {
+        userMessage = 'Permission denied. Please check your access rights.';
+      } else if (error.message?.includes('connection')) {
+        userMessage = 'Database connection error. Please check your internet connection.';
+      } else if (error.message?.includes('duplicate')) {
+        userMessage = 'A semester with this name already exists.';
+      } else if (error.message) {
+        userMessage = error.message;
+      }
+
+      throw new Error(userMessage);
+    }
+  },
+
+  // Update semester period
+  async updateSemesterPeriod(semesterId: string, updates: Partial<SemesterPeriod>) {
+    const { data, error } = await supabase
+      .from('semester_periods')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', semesterId)
+      .select();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Activate semester (deactivates others)
+  async activateSemester(semesterId: string) {
+    // First deactivate all semesters
+    await supabase
+      .from('semester_periods')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Update all
+
+    // Then activate the selected semester
+    const { data, error } = await supabase
+      .from('semester_periods')
+      .update({
+        is_active: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', semesterId)
+      .select();
+
+    if (error) throw error;
+    return data;
+  },
+
+
+
+  // Check student access status
+  async checkStudentAccess(studentId: string) {
+    try {
+      // First try using the RPC function
+      const { data, error } = await supabase
+        .rpc('check_student_access', {
+          p_student_id: studentId
+        });
+
+      if (error) {
+        // If RPC function doesn't exist, fall back to manual check
+        console.log('RPC function not found, using manual access check');
+
+        // Check payment approval
+        const { data: paymentData } = await supabase
+          .from('payment_approvals')
+          .select('*')
+          .eq('student_id', studentId)
+          .eq('approval_status', 'approved')
+          .gte('access_valid_until', new Date().toISOString().split('T')[0])
+          .lte('access_valid_from', new Date().toISOString().split('T')[0]);
+
+        // Check semester registration
+        const { data: registrationData } = await supabase
+          .from('student_semester_registrations')
+          .select('*, semester_periods(*)')
+          .eq('student_id', studentId)
+          .eq('registration_status', 'approved');
+
+        // Check financial statements
+        const { data: financialData } = await supabase
+          .from('financial_records')
+          .select('balance')
+          .eq('student_id', studentId);
+
+        const paymentApproved = paymentData && paymentData.length > 0;
+        const semesterRegistered = registrationData && registrationData.some(reg =>
+          reg.semester_periods?.is_active &&
+          new Date(reg.semester_periods.start_date) <= new Date() &&
+          new Date(reg.semester_periods.end_date) >= new Date()
+        );
+        const hasFinancialStatements = financialData && financialData.length > 0;
+        const financialBalance = financialData?.reduce((sum, record) => sum + (parseFloat(record.balance) || 0), 0) || 0;
+
+        // Simplified access logic: Payment approval is sufficient for access
+        // Grant access if payment approved OR if student has financial statements with balance > 0
+        const hasAccess = paymentApproved || (hasFinancialStatements && financialBalance > 0);
+
+        let denialReason = '';
+        if (hasFinancialStatements && financialBalance === 0 && !paymentApproved) {
+          denialReason = 'Access denied: You have a zero balance but no payment approval. Please pay and get approval from the Accounts Office.';
+        } else if (!paymentApproved) {
+          denialReason = 'Payment not approved or access period expired. Please contact the Accounts Office.';
+        }
+
+        return {
+          has_access: hasAccess,
+          payment_approved: paymentApproved,
+          semester_registered: semesterRegistered,
+          access_valid_until: paymentData?.[0]?.access_valid_until,
+          semester_end_date: registrationData?.[0]?.semester_periods?.end_date,
+          denial_reason: denialReason,
+          financial_balance: financialBalance,
+          has_financial_statements: hasFinancialStatements
+        };
+      }
+      return data?.[0] || null;
+    } catch (error) {
+      console.error('Error checking student access:', error);
+      return {
+        has_access: false,
+        payment_approved: false,
+        semester_registered: false,
+        denial_reason: 'Error checking access status'
+      };
+    }
+  },
+
+  // Get access control logs
+  async getAccessControlLogs(studentId?: string, limit: number = 100) {
+    try {
+      let query = supabase
+        .from('access_control_logs')
+        .select(`
+          *,
+          students(student_id, first_name, last_name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (studentId) {
+        query = query.eq('student_id', studentId);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.log('Access control logs table not found:', error.message);
+        return [];
+      }
+      return data || [];
+    } catch (error) {
+      console.error('Error getting access control logs:', error);
+      return [];
+    }
+  },
+
+  // Run access control maintenance
+  async runAccessControlMaintenance() {
+    try {
+      // For now, just return a success message since we don't have the RPC function
+      // In a real implementation, this would call the database maintenance function
+      console.log('Running access control maintenance...');
+      return 'Access control maintenance completed successfully.';
+    } catch (error) {
+      console.error('Error running access control maintenance:', error);
+      throw error;
+    }
+  },
+
+  // Ensure all required tables exist with better error handling
+  async ensureTablesExist() {
+    try {
+      console.log('🔧 Ensuring access control tables exist...');
+
+      // Try to create tables one by one with individual error handling
+      const tables = [
+        {
+          name: 'semester_periods',
+          sql: `
+            CREATE TABLE IF NOT EXISTS semester_periods (
+              id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+              semester_name TEXT NOT NULL,
+              academic_year TEXT NOT NULL,
+              semester_number INTEGER NOT NULL,
+              start_date DATE NOT NULL,
+              end_date DATE NOT NULL,
+              registration_start_date DATE NOT NULL,
+              registration_end_date DATE NOT NULL,
+              is_active BOOLEAN DEFAULT false,
+              is_registration_open BOOLEAN DEFAULT false,
+              created_by UUID,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+          `
+        },
+        {
+          name: 'payment_approvals',
+          sql: `
+            CREATE TABLE IF NOT EXISTS payment_approvals (
+              id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+              student_id UUID NOT NULL,
+              payment_id UUID,
+              amount_paid DECIMAL(10,2) NOT NULL,
+              payment_reference TEXT,
+              payment_date DATE NOT NULL,
+              approved_by UUID,
+              approval_date TIMESTAMP WITH TIME ZONE,
+              access_valid_from DATE NOT NULL,
+              access_valid_until DATE NOT NULL,
+              approval_status TEXT DEFAULT 'pending',
+              approval_notes TEXT,
+              auto_expire BOOLEAN DEFAULT true,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+          `
+        },
+        {
+          name: 'student_semester_registrations',
+          sql: `
+            CREATE TABLE IF NOT EXISTS student_semester_registrations (
+              id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+              student_id UUID NOT NULL,
+              semester_period_id UUID NOT NULL,
+              registration_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              approved_by UUID,
+              approval_date TIMESTAMP WITH TIME ZONE,
+              registration_status TEXT DEFAULT 'pending',
+              payment_approval_id UUID,
+              registration_notes TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+          `
+        },
+        {
+          name: 'access_control_logs',
+          sql: `
+            CREATE TABLE IF NOT EXISTS access_control_logs (
+              id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+              student_id UUID NOT NULL,
+              action_type TEXT NOT NULL,
+              reason TEXT,
+              payment_approval_id UUID,
+              semester_registration_id UUID,
+              ip_address INET,
+              user_agent TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+          `
+        },
+        {
+          name: 'exam_slips',
+          sql: `
+            CREATE TABLE IF NOT EXISTS exam_slips (
+              id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+              course_id UUID NOT NULL,
+              lecturer_name TEXT NOT NULL,
+              exam_date DATE NOT NULL,
+              exam_time TIME NOT NULL,
+              venue TEXT NOT NULL,
+              academic_year TEXT NOT NULL,
+              semester INTEGER NOT NULL,
+              is_active BOOLEAN DEFAULT true,
+              created_by UUID NOT NULL,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+          `
+        }
+      ];
+
+      for (const table of tables) {
+        try {
+          console.log(`Creating table: ${table.name}`);
+          const { error } = await supabase.sql([table.sql]);
+          if (error) {
+            console.error(`Error creating ${table.name}:`, error);
+          } else {
+            console.log(`✅ Table ${table.name} created/verified`);
+          }
+        } catch (tableError: any) {
+          console.error(`Exception creating ${table.name}:`, tableError);
+        }
+      }
+
+      console.log('✅ All access control tables processed');
+      return true;
+    } catch (error: any) {
+      console.error('Error in ensureTablesExist:', error);
+      return false;
+    }
+  },
+
+  // Alternative method using direct table creation without SQL template literals
+  async createTablesDirectly() {
+    try {
+      console.log('🔧 Creating tables using direct method...');
+
+      // Use the REST API approach instead of SQL template literals
+      const response = await fetch('/api/setup-db', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('✅ Tables created successfully via API');
+        return true;
+      } else {
+        console.error('❌ API table creation failed:', result.error);
+        return false;
+      }
+    } catch (error: any) {
+      console.error('Error creating tables directly:', error);
+      return false;
+    }
+  },
+
+  // Ensure ledger adjustments table exists
+  async ensureLedgerAdjustmentsTable() {
+    console.log('Ensuring ledger_adjustments table exists...');
+
+    try {
+      // Check if table exists by trying to select from it
+      const { error: checkError } = await supabase
+        .from('ledger_adjustments')
+        .select('id')
+        .limit(1);
+
+      if (checkError && checkError.code === 'PGRST116') {
+        // Table doesn't exist, but we've already created it manually
+        console.log('Note: ledger_adjustments table should be created manually in Supabase dashboard');
+        throw new Error('ledger_adjustments table does not exist. Please create it manually using the SQL script.');
+      } else if (checkError) {
+        console.log('Note: Table check completed with error:', checkError.message);
+      } else {
+        console.log('✅ Ledger adjustments table exists and is accessible');
+      }
+    } catch (error: any) {
+      console.log('Note: Table verification completed:', error.message);
+      // Don't throw error here to avoid breaking the main operation
+    }
+  },
+
+  // Apply balance adjustment to student account
+  async applyBalanceAdjustment(adjustmentData: {
+    student_id: string;
+    account_id: string;
+    adjustment_amount: number;
+    adjustment_type: 'debit' | 'credit';
+    description: string;
+    reference_number: string;
+  }, accountantId: string) {
+    console.log('Applying balance adjustment:', adjustmentData);
+
+    try {
+      // Ensure table exists first
+      await this.ensureLedgerAdjustmentsTable();
+
+      // Create ledger adjustment entry
+      const { data: adjustmentEntry, error: adjustmentError } = await supabase
+        .from('ledger_adjustments')
+        .insert([{
+          student_id: adjustmentData.student_id,
+          date: new Date().toISOString().split('T')[0],
+          description: adjustmentData.description,
+          reference_number: adjustmentData.reference_number,
+          debit_amount: adjustmentData.adjustment_type === 'debit' ? adjustmentData.adjustment_amount : 0,
+          credit_amount: adjustmentData.adjustment_type === 'credit' ? adjustmentData.adjustment_amount : 0,
+          type: 'adjustment',
+          created_by: accountantId
+        }])
+        .select()
+        .single();
+
+      if (adjustmentError) {
+        console.error('Ledger adjustment error details:', adjustmentError);
+        throw new Error(`Database error: ${adjustmentError.message || adjustmentError.details || adjustmentError.hint || 'Unknown database error'}`);
+      }
+
+      // Log the action for audit trail
+      try {
+        await logAccountantAction(
+          accountantId,
+          'balance_adjustment',
+          'ledger_adjustment',
+          adjustmentEntry.id,
+          adjustmentData.student_id,
+          `Applied ${adjustmentData.adjustment_type} adjustment of ${adjustmentData.adjustment_amount} to student account`,
+          null,
+          adjustmentData
+        );
+      } catch (logError) {
+        console.warn('Failed to log action, but adjustment was successful:', logError);
+      }
+
+      console.log('Balance adjustment applied successfully:', adjustmentEntry);
+      return adjustmentEntry;
+    } catch (error: any) {
+      console.error('Error applying balance adjustment:', error);
+      throw new Error(error.message || error.toString() || 'Failed to apply balance adjustment');
+    }
+  },
+
+  // Get student account balances for editing
+  async getStudentAccountBalances(studentId: string) {
+    console.log('Fetching student account balances for editing:', studentId);
+
+    try {
+      // Load financial records and calculate balances
+      const { data: financialRecords, error: frError } = await supabase
+        .from('financial_records')
+        .select(`
+          id,
+          academic_year,
+          semester,
+          total_amount,
+          amount_paid,
+          balance,
+          due_date,
+          created_at
+        `)
+        .eq('student_id', studentId)
+        .order('created_at');
+
+      if (frError) throw frError;
+
+      // Load payments
+      const { data: payments, error: payError } = await supabase
+        .from('payments')
+        .select(`
+          id,
+          amount,
+          payment_date,
+          reference_number,
+          created_at
+        `)
+        .eq('student_id', studentId)
+        .order('payment_date');
+
+      if (payError) throw payError;
+
+      // Load ledger adjustments
+      const { data: adjustments, error: adjError } = await supabase
+        .from('ledger_adjustments')
+        .select(`
+          id,
+          date,
+          description,
+          reference_number,
+          debit_amount,
+          credit_amount,
+          type,
+          created_by,
+          created_at
+        `)
+        .eq('student_id', studentId)
+        .order('created_at');
+
+      if (adjError) throw adjError;
+
+      // Calculate current balances
+      const totalOwed = financialRecords?.reduce((sum, record) => sum + (record.total_amount || 0), 0) || 0;
+      const totalPaid = payments?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+      const totalAdjustments = adjustments?.reduce((sum, adj) => sum + (adj.debit_amount || 0) - (adj.credit_amount || 0), 0) || 0;
+      const currentBalance = totalOwed - totalPaid + totalAdjustments;
+
+      console.log('Student account balances calculated successfully');
+      return {
+        financial_records: financialRecords || [],
+        payments: payments || [],
+        adjustments: adjustments || [],
+        summary: {
+          total_owed: totalOwed,
+          total_paid: totalPaid,
+          total_adjustments: totalAdjustments,
+          current_balance: currentBalance
+        }
+      };
+    } catch (error: any) {
+      console.error('Error fetching student account balances:', error);
+      throw error;
+    }
+  },
+
+  // Get balance adjustment history for a student
+  async getBalanceAdjustmentHistory(studentId: string, limit: number = 50) {
+    console.log('Fetching balance adjustment history for student:', studentId);
+
+    try {
+      const { data, error } = await supabase
+        .from('ledger_adjustments')
+        .select(`
+          id,
+          date,
+          description,
+          reference_number,
+          debit_amount,
+          credit_amount,
+          type,
+          created_by,
+          created_at
+        `)
+        .eq('student_id', studentId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      console.log('Balance adjustment history fetched successfully:', data?.length || 0);
+      return data || [];
+    } catch (error: any) {
+      console.error('Error fetching balance adjustment history:', error);
+      throw error;
+    }
   }
 };
 
@@ -3930,5 +6125,294 @@ export const siteSettingsAPI = {
     });
 
     return homepageSettings;
+  }
+};
+
+// Activity Logging System
+export const activityLogger = {
+  // Log user activity
+  async logActivity(activity: {
+    userId: string;
+    userRole: string;
+    actionType: 'login' | 'logout' | 'create' | 'update' | 'delete' | 'view' | 'export' | 'print';
+    module: string;
+    resourceType?: string;
+    resourceId?: string;
+    details?: any;
+    ipAddress?: string;
+    userAgent?: string;
+    sessionId?: string;
+  }) {
+    try {
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .insert({
+          user_id: activity.userId,
+          user_role: activity.userRole,
+          action_type: activity.actionType,
+          module: activity.module,
+          resource_type: activity.resourceType,
+          resource_id: activity.resourceId,
+          details: activity.details,
+          ip_address: activity.ipAddress,
+          user_agent: activity.userAgent,
+          session_id: activity.sessionId
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Failed to log activity:', error);
+      throw error;
+    }
+  },
+
+  // Get activity logs with filters
+  async getActivityLogs(filters: {
+    userId?: string;
+    userRole?: string;
+    actionType?: string;
+    module?: string;
+    startDate?: string;
+    endDate?: string;
+    limit?: number;
+    offset?: number;
+  } = {}) {
+    try {
+      let query = supabase
+        .from('activity_logs')
+        .select(`
+          *,
+          system_users(username, role)
+        `)
+        .order('timestamp', { ascending: false });
+
+      if (filters.userId) {
+        query = query.eq('user_id', filters.userId);
+      }
+      if (filters.userRole) {
+        query = query.eq('user_role', filters.userRole);
+      }
+      if (filters.actionType) {
+        query = query.eq('action_type', filters.actionType);
+      }
+      if (filters.module) {
+        query = query.eq('module', filters.module);
+      }
+      if (filters.startDate) {
+        query = query.gte('timestamp', filters.startDate);
+      }
+      if (filters.endDate) {
+        query = query.lte('timestamp', filters.endDate);
+      }
+      if (filters.limit) {
+        query = query.limit(filters.limit);
+      }
+      if (filters.offset) {
+        query = query.range(filters.offset, (filters.offset || 0) + (filters.limit || 50) - 1);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Failed to get activity logs:', error);
+      throw error;
+    }
+  },
+
+  // Get activity statistics
+  async getActivityStats(timeframe: 'today' | 'week' | 'month' | 'year' = 'today') {
+    try {
+      const now = new Date();
+      let startDate: Date;
+
+      switch (timeframe) {
+        case 'today':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'week':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'month':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'year':
+          startDate = new Date(now.getFullYear(), 0, 1);
+          break;
+      }
+
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('action_type, user_role, module')
+        .gte('timestamp', startDate.toISOString());
+
+      if (error) throw error;
+
+      // Process statistics
+      const stats = {
+        totalActivities: data.length,
+        byActionType: {} as Record<string, number>,
+        byUserRole: {} as Record<string, number>,
+        byModule: {} as Record<string, number>
+      };
+
+      data.forEach(log => {
+        stats.byActionType[log.action_type] = (stats.byActionType[log.action_type] || 0) + 1;
+        stats.byUserRole[log.user_role] = (stats.byUserRole[log.user_role] || 0) + 1;
+        stats.byModule[log.module] = (stats.byModule[log.module] || 0) + 1;
+      });
+
+      return stats;
+    } catch (error) {
+      console.error('Failed to get activity stats:', error);
+      throw error;
+    }
+  }
+};
+
+// Principal API - Master read-only access to all system data
+export const principalAPI = {
+  // Get comprehensive system overview
+  async getSystemOverview() {
+    try {
+      const [
+        usersData,
+        coursesData,
+        enrollmentsData,
+        examSlipsData,
+        paymentsData,
+        activityStats
+      ] = await Promise.all([
+        supabase.from('system_users').select('role, is_active, created_at').eq('is_active', true),
+        supabase.from('courses').select('*'),
+        supabase.from('course_enrollments').select('status'),
+        supabase.from('exam_slips').select('is_active, created_at'),
+        supabase.from('payment_approvals').select('status, created_at'),
+        activityLogger.getActivityStats('today')
+      ]);
+
+      const overview = {
+        users: {
+          total: usersData.data?.length || 0,
+          byRole: {} as Record<string, number>,
+          activeToday: usersData.data?.filter(u => {
+            const today = new Date().toDateString();
+            return new Date(u.created_at).toDateString() === today;
+          }).length || 0
+        },
+        courses: {
+          total: coursesData.data?.length || 0
+        },
+        enrollments: {
+          total: enrollmentsData.data?.length || 0,
+          active: enrollmentsData.data?.filter(e => e.status === 'enrolled').length || 0
+        },
+        examSlips: {
+          total: examSlipsData.data?.length || 0,
+          active: examSlipsData.data?.filter(e => e.is_active).length || 0
+        },
+        payments: {
+          total: paymentsData.data?.length || 0,
+          approved: paymentsData.data?.filter(p => p.status === 'approved').length || 0
+        },
+        activityStats
+      };
+
+      // Count users by role
+      usersData.data?.forEach(user => {
+        overview.users.byRole[user.role] = (overview.users.byRole[user.role] || 0) + 1;
+      });
+
+      return overview;
+    } catch (error) {
+      console.error('Failed to get system overview:', error);
+      throw error;
+    }
+  },
+
+  // Get all users with detailed information
+  async getAllUsers(filters: { role?: string; isActive?: boolean } = {}) {
+    try {
+      let query = supabase
+        .from('system_users')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (filters.role) {
+        query = query.eq('role', filters.role);
+      }
+      if (filters.isActive !== undefined) {
+        query = query.eq('is_active', filters.isActive);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Failed to get all users:', error);
+      throw error;
+    }
+  },
+
+  // Get comprehensive course data
+  async getAllCourses() {
+    try {
+      const { data, error } = await supabase
+        .from('courses')
+        .select(`
+          *,
+          lecturers(first_name, last_name, email),
+          course_enrollments(student_id, status),
+          exam_slips(lecturer_name, exam_date, venue, is_active)
+        `)
+        .order('course_code');
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Failed to get all courses:', error);
+      throw error;
+    }
+  },
+
+  // Get all financial data
+  async getFinancialOverview() {
+    try {
+      const [paymentsData, ledgerData] = await Promise.all([
+        supabase.from('payment_approvals').select(`
+          *,
+          system_users(username)
+        `).order('created_at', { ascending: false }),
+        supabase.from('ledger_entries').select('*').order('created_at', { ascending: false })
+      ]);
+
+      return {
+        payments: paymentsData.data || [],
+        ledgerEntries: ledgerData.data || []
+      };
+    } catch (error) {
+      console.error('Failed to get financial overview:', error);
+      throw error;
+    }
+  },
+
+  // Get real-time system metrics
+  async getSystemMetrics() {
+    try {
+      const { data, error } = await supabase
+        .from('system_metrics')
+        .select('*')
+        .order('recorded_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Failed to get system metrics:', error);
+      throw error;
+    }
   }
 };

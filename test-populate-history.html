@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Populate History Records Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+            color: #856404;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .populate-btn {
+            background-color: #28a745;
+        }
+        .populate-btn:hover {
+            background-color: #218838;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+            max-height: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Populate History Records Test</h1>
+        <p>This tool creates sample payment approvals, student registrations, and access logs to test the history display.</p>
+        
+        <div>
+            <button class="populate-btn" onclick="populatePaymentApprovals()">Create Sample Payment Approvals</button>
+            <button class="populate-btn" onclick="populateStudentRegistrations()">Create Sample Student Registrations</button>
+            <button class="populate-btn" onclick="populateAccessLogs()">Create Sample Access Logs</button>
+            <button class="populate-btn" onclick="populateAllSampleData()">Create All Sample Data</button>
+        </div>
+        
+        <div>
+            <button onclick="checkCurrentData()">Check Current Data</button>
+            <button onclick="clearResults()">Clear Results</button>
+        </div>
+        
+        <div id="results"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Initialize Supabase client
+        const supabaseUrl = 'https://tigknjhplktzqzradmkd.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpZ2tuamhwbGt0enF6cmFkbWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTg5NTksImV4cCI6MjA2NjAzNDk1OX0.GhMpUkea-rEqqIKWZv9q7l_MIeZVK57Tj5oAlKC-4tY';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        function addResult(title, status, message, data = null) {
+            const resultsDiv = document.getElementById('results');
+            const testDiv = document.createElement('div');
+            testDiv.className = `test-section ${status}`;
+            
+            let content = `<h3>${title}</h3><p>${message}</p>`;
+            if (data) {
+                content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            testDiv.innerHTML = content;
+            resultsDiv.appendChild(testDiv);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function getStudentsAndAccountants() {
+            const [studentsResult, accountantsResult] = await Promise.all([
+                supabase.from('students').select('id, student_id, first_name, last_name').limit(5),
+                supabase.from('accountants').select('id').limit(1)
+            ]);
+
+            return {
+                students: studentsResult.data || [],
+                accountants: accountantsResult.data || []
+            };
+        }
+
+        async function populatePaymentApprovals() {
+            addResult('Payment Approvals', 'loading', 'Creating sample payment approvals...');
+            
+            try {
+                const { students, accountants } = await getStudentsAndAccountants();
+                
+                if (students.length === 0) {
+                    addResult('Payment Approvals', 'error', 'No students found in database');
+                    return;
+                }
+
+                if (accountants.length === 0) {
+                    addResult('Payment Approvals', 'error', 'No accountants found in database');
+                    return;
+                }
+
+                const accountantId = accountants[0].id;
+                const results = [];
+
+                for (let i = 0; i < Math.min(students.length, 3); i++) {
+                    const student = students[i];
+                    const amount = 500 + (i * 250); // $500, $750, $1000
+                    const daysAgo = i * 5; // 0, 5, 10 days ago
+                    const paymentDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+                    const validUntil = new Date(Date.now() + (90 - daysAgo) * 24 * 60 * 60 * 1000);
+
+                    const paymentData = {
+                        student_id: student.id,
+                        amount_paid: amount,
+                        payment_reference: `PAY-${Date.now()}-${i}`,
+                        payment_date: paymentDate.toISOString().split('T')[0],
+                        access_valid_from: paymentDate.toISOString().split('T')[0],
+                        access_valid_until: validUntil.toISOString().split('T')[0],
+                        approval_status: i === 0 ? 'approved' : (i === 1 ? 'pending' : 'approved'),
+                        approved_by: accountantId,
+                        approval_date: i !== 1 ? new Date().toISOString() : null,
+                        approval_notes: `Sample payment approval for ${student.first_name} ${student.last_name}`
+                    };
+
+                    const { data, error } = await supabase
+                        .from('payment_approvals')
+                        .insert(paymentData)
+                        .select();
+
+                    if (error) {
+                        results.push({
+                            student: `${student.first_name} ${student.last_name}`,
+                            status: 'error',
+                            error: error.message
+                        });
+                    } else {
+                        results.push({
+                            student: `${student.first_name} ${student.last_name}`,
+                            status: 'created',
+                            amount: amount,
+                            approval_status: paymentData.approval_status
+                        });
+                    }
+                }
+
+                const created = results.filter(r => r.status === 'created').length;
+                const errors = results.filter(r => r.status === 'error').length;
+
+                addResult('Payment Approvals', 'success', `Created ${created} payment approvals, ${errors} errors`, results);
+
+            } catch (error) {
+                addResult('Payment Approvals', 'error', `Error: ${error.message}`, error);
+            }
+        }
+
+        async function populateStudentRegistrations() {
+            addResult('Student Registrations', 'loading', 'Creating sample student registrations...');
+            
+            try {
+                const { students, accountants } = await getStudentsAndAccountants();
+                
+                // Get active semester
+                const { data: semesters } = await supabase
+                    .from('semester_periods')
+                    .select('*')
+                    .eq('is_active', true)
+                    .limit(1);
+
+                if (!semesters || semesters.length === 0) {
+                    addResult('Student Registrations', 'error', 'No active semester found');
+                    return;
+                }
+
+                const activeSemester = semesters[0];
+                const accountantId = accountants[0]?.id;
+                const results = [];
+
+                for (let i = 0; i < Math.min(students.length, 4); i++) {
+                    const student = students[i];
+                    const daysAgo = i * 3; // 0, 3, 6, 9 days ago
+                    const registrationDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
+                    // Check if already registered
+                    const { data: existing } = await supabase
+                        .from('student_semester_registrations')
+                        .select('id')
+                        .eq('student_id', student.id)
+                        .eq('semester_period_id', activeSemester.id);
+
+                    if (existing && existing.length > 0) {
+                        results.push({
+                            student: `${student.first_name} ${student.last_name}`,
+                            status: 'already_exists'
+                        });
+                        continue;
+                    }
+
+                    const registrationData = {
+                        student_id: student.id,
+                        semester_period_id: activeSemester.id,
+                        registration_date: registrationDate.toISOString(),
+                        registration_status: i < 2 ? 'approved' : 'pending',
+                        approved_by: i < 2 ? accountantId : null,
+                        approval_date: i < 2 ? new Date().toISOString() : null,
+                        registration_notes: `Sample registration for ${student.first_name} ${student.last_name}`
+                    };
+
+                    const { data, error } = await supabase
+                        .from('student_semester_registrations')
+                        .insert(registrationData)
+                        .select();
+
+                    if (error) {
+                        results.push({
+                            student: `${student.first_name} ${student.last_name}`,
+                            status: 'error',
+                            error: error.message
+                        });
+                    } else {
+                        results.push({
+                            student: `${student.first_name} ${student.last_name}`,
+                            status: 'created',
+                            registration_status: registrationData.registration_status
+                        });
+                    }
+                }
+
+                const created = results.filter(r => r.status === 'created').length;
+                const existing = results.filter(r => r.status === 'already_exists').length;
+                const errors = results.filter(r => r.status === 'error').length;
+
+                addResult('Student Registrations', 'success', `Created ${created} registrations, ${existing} already existed, ${errors} errors`, results);
+
+            } catch (error) {
+                addResult('Student Registrations', 'error', `Error: ${error.message}`, error);
+            }
+        }
+
+        async function populateAccessLogs() {
+            addResult('Access Logs', 'loading', 'Creating sample access logs...');
+            
+            try {
+                const { students } = await getStudentsAndAccountants();
+                
+                if (students.length === 0) {
+                    addResult('Access Logs', 'error', 'No students found in database');
+                    return;
+                }
+
+                const logTypes = [
+                    { action: 'access_granted', reason: 'payment_approved' },
+                    { action: 'access_granted', reason: 'semester_approved' },
+                    { action: 'access_denied', reason: 'payment_not_approved' },
+                    { action: 'login_attempt', reason: 'user_login' },
+                    { action: 'auto_expire', reason: 'access_period_ended' }
+                ];
+
+                const results = [];
+
+                for (let i = 0; i < Math.min(students.length * 2, 10); i++) {
+                    const student = students[i % students.length];
+                    const logType = logTypes[i % logTypes.length];
+                    const hoursAgo = i * 2; // 0, 2, 4, 6... hours ago
+                    const logDate = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
+
+                    const logData = {
+                        student_id: student.id,
+                        action_type: logType.action,
+                        reason: logType.reason,
+                        ip_address: `192.168.1.${100 + (i % 50)}`,
+                        user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        created_at: logDate.toISOString()
+                    };
+
+                    const { data, error } = await supabase
+                        .from('access_control_logs')
+                        .insert(logData)
+                        .select();
+
+                    if (error) {
+                        results.push({
+                            student: `${student.first_name} ${student.last_name}`,
+                            status: 'error',
+                            error: error.message
+                        });
+                    } else {
+                        results.push({
+                            student: `${student.first_name} ${student.last_name}`,
+                            status: 'created',
+                            action: logType.action,
+                            reason: logType.reason
+                        });
+                    }
+                }
+
+                const created = results.filter(r => r.status === 'created').length;
+                const errors = results.filter(r => r.status === 'error').length;
+
+                addResult('Access Logs', 'success', `Created ${created} access logs, ${errors} errors`, results);
+
+            } catch (error) {
+                addResult('Access Logs', 'error', `Error: ${error.message}`, error);
+            }
+        }
+
+        async function populateAllSampleData() {
+            clearResults();
+            addResult('All Sample Data', 'loading', 'Creating all sample data...');
+            
+            await populatePaymentApprovals();
+            await populateStudentRegistrations();
+            await populateAccessLogs();
+            
+            addResult('All Sample Data', 'success', 'All sample data creation completed! Check individual results above.');
+        }
+
+        async function checkCurrentData() {
+            addResult('Current Data Check', 'loading', 'Checking current data in database...');
+            
+            try {
+                const [paymentsResult, registrationsResult, logsResult, semestersResult] = await Promise.all([
+                    supabase.from('payment_approvals').select('count', { count: 'exact', head: true }),
+                    supabase.from('student_semester_registrations').select('count', { count: 'exact', head: true }),
+                    supabase.from('access_control_logs').select('count', { count: 'exact', head: true }),
+                    supabase.from('semester_periods').select('count', { count: 'exact', head: true })
+                ]);
+
+                const summary = {
+                    payment_approvals: paymentsResult.count || 0,
+                    student_registrations: registrationsResult.count || 0,
+                    access_logs: logsResult.count || 0,
+                    semester_periods: semestersResult.count || 0
+                };
+
+                addResult('Current Data Check', 'info', 'Current database record counts:', summary);
+
+            } catch (error) {
+                addResult('Current Data Check', 'error', `Error: ${error.message}`, error);
+            }
+        }
+
+        // Auto-check current data on page load
+        window.addEventListener('load', () => {
+            setTimeout(checkCurrentData, 1000);
+        });
+    </script>
+</body>
+</html>

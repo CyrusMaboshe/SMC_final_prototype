@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Financial API</title>
+</head>
+<body>
+    <h1>Financial API Test</h1>
+    <button onclick="testAPI()">Test studentAPI Functions</button>
+    <div id="results"></div>
+
+    <script>
+        // Test the studentAPI functions
+        async function testAPI() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<p>Testing...</p>';
+
+            try {
+                // Import the studentAPI from the main application
+                const response = await fetch('/api/test-student-api', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        studentNumber: 'SMC2025001'
+                    })
+                });
+
+                const result = await response.json();
+                resultsDiv.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+            } catch (error) {
+                resultsDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

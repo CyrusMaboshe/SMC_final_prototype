@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Two-Step Approval Process</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+            color: #856404;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+            color: #856404;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .step-btn {
+            background-color: #28a745;
+        }
+        .step-btn:hover {
+            background-color: #218838;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+            max-height: 300px;
+        }
+        .step {
+            border-left: 4px solid #007bff;
+            padding-left: 15px;
+            margin: 10px 0;
+        }
+        .step.completed {
+            border-left-color: #28a745;
+        }
+        .step.failed {
+            border-left-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Two-Step Approval Process</h1>
+        <p>This tool tests the complete two-step approval process: Payment Approval → Semester Registration → Student Access</p>
+        
+        <div class="info test-section">
+            <h3>Two-Step Process Requirements:</h3>
+            <div class="step">
+                <strong>Step 1:</strong> Accountant approves student payment (creates payment approval record)
+            </div>
+            <div class="step">
+                <strong>Step 2:</strong> Accountant registers student for semester (creates semester registration record)
+            </div>
+            <div class="step">
+                <strong>Result:</strong> Student can access portal only after BOTH steps are completed
+            </div>
+        </div>
+        
+        <div>
+            <button onclick="testCurrentState()">Check Current State</button>
+            <button class="step-btn" onclick="testStep1PaymentApproval()">Test Step 1: Payment Approval</button>
+            <button class="step-btn" onclick="testStep2SemesterRegistration()">Test Step 2: Semester Registration</button>
+            <button onclick="testStudentAccess()">Test Student Access</button>
+            <button onclick="testCompleteWorkflow()">Test Complete Workflow</button>
+            <button onclick="clearResults()">Clear Results</button>
+        </div>
+        
+        <div id="results"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Initialize Supabase client
+        const supabaseUrl = 'https://tigknjhplktzqzradmkd.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpZ2tuamhwbGt0enF6cmFkbWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTg5NTksImV4cCI6MjA2NjAzNDk1OX0.GhMpUkea-rEqqIKWZv9q7l_MIeZVK57Tj5oAlKC-4tY';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        function addResult(title, status, message, data = null) {
+            const resultsDiv = document.getElementById('results');
+            const testDiv = document.createElement('div');
+            testDiv.className = `test-section ${status}`;
+            
+            let content = `<h3>${title}</h3><p>${message}</p>`;
+            if (data) {
+                content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            testDiv.innerHTML = content;
+            resultsDiv.appendChild(testDiv);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function getTestStudent() {
+            const { data: students } = await supabase
+                .from('students')
+                .select('id, student_id, first_name, last_name')
+                .limit(1);
+            
+            return students && students.length > 0 ? students[0] : null;
+        }
+
+        async function getAccountant() {
+            const { data: accountants } = await supabase
+                .from('accountants')
+                .select('id')
+                .limit(1);
+            
+            return accountants && accountants.length > 0 ? accountants[0] : null;
+        }
+
+        async function getActiveSemester() {
+            const { data: semesters } = await supabase
+                .from('semester_periods')
+                .select('*')
+                .eq('is_active', true)
+                .limit(1);
+            
+            return semesters && semesters.length > 0 ? semesters[0] : null;
+        }
+
+        async function testCurrentState() {
+            addResult('Current State Check', 'loading', 'Checking current system state...');
+            
+            try {
+                const [student, accountant, semester] = await Promise.all([
+                    getTestStudent(),
+                    getAccountant(),
+                    getActiveSemester()
+                ]);
+
+                if (!student) {
+                    addResult('Current State Check', 'error', 'No students found in database');
+                    return;
+                }
+
+                if (!accountant) {
+                    addResult('Current State Check', 'error', 'No accountants found in database');
+                    return;
+                }
+
+                if (!semester) {
+                    addResult('Current State Check', 'error', 'No active semester found');
+                    return;
+                }
+
+                // Check payment approval status
+                const { data: payments } = await supabase
+                    .from('payment_approvals')
+                    .select('*')
+                    .eq('student_id', student.id)
+                    .eq('approval_status', 'approved');
+
+                // Check semester registration status
+                const { data: registrations } = await supabase
+                    .from('student_semester_registrations')
+                    .select('*')
+                    .eq('student_id', student.id)
+                    .eq('semester_period_id', semester.id);
+
+                // Check access control
+                const { data: accessResult } = await supabase
+                    .rpc('check_student_access', { p_student_id: student.id });
+
+                const state = {
+                    student: `${student.first_name} ${student.last_name} (${student.student_id})`,
+                    accountant_available: true,
+                    active_semester: `${semester.semester_name} (${semester.academic_year})`,
+                    payment_approved: payments && payments.length > 0,
+                    semester_registered: registrations && registrations.length > 0 && registrations[0].registration_status === 'approved',
+                    student_access: accessResult && accessResult.length > 0 ? accessResult[0] : null
+                };
+
+                const status = state.payment_approved && state.semester_registered ? 'success' : 'warning';
+                addResult('Current State Check', status, 'System state retrieved successfully', state);
+
+                return { student, accountant, semester, state };
+
+            } catch (error) {
+                addResult('Current State Check', 'error', `Error: ${error.message}`, error);
+                return null;
+            }
+        }
+
+        async function testStep1PaymentApproval() {
+            addResult('Step 1: Payment Approval', 'loading', 'Testing payment approval process...');
+            
+            try {
+                const testData = await testCurrentState();
+                if (!testData) return;
+
+                const { student, accountant, semester } = testData;
+
+                // Create payment approval
+                const paymentData = {
+                    student_id: student.id,
+                    amount_paid: 1000.00,
+                    payment_reference: `TEST-PAY-${Date.now()}`,
+                    payment_date: new Date().toISOString().split('T')[0],
+                    access_valid_from: new Date().toISOString().split('T')[0],
+                    access_valid_until: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    approval_status: 'approved',
+                    approved_by: accountant.id,
+                    approval_date: new Date().toISOString(),
+                    approval_notes: 'Test payment approval for two-step process'
+                };
+
+                const { data, error } = await supabase
+                    .from('payment_approvals')
+                    .upsert(paymentData, { onConflict: 'student_id' })
+                    .select();
+
+                if (error) throw error;
+
+                // Check access after payment approval only
+                const { data: accessResult } = await supabase
+                    .rpc('check_student_access', { p_student_id: student.id });
+
+                const result = {
+                    payment_created: data[0],
+                    access_check: accessResult[0],
+                    expected_access: false, // Should be false because semester registration is missing
+                    actual_access: accessResult[0]?.has_access || false
+                };
+
+                const success = !result.actual_access; // Should NOT have access yet
+                const status = success ? 'success' : 'error';
+                const message = success 
+                    ? 'Step 1 PASSED: Payment approved but student correctly denied access (needs semester registration)'
+                    : 'Step 1 FAILED: Student has access with only payment approval (should require semester registration too)';
+
+                addResult('Step 1: Payment Approval', status, message, result);
+
+                return success;
+
+            } catch (error) {
+                addResult('Step 1: Payment Approval', 'error', `Error: ${error.message}`, error);
+                return false;
+            }
+        }
+
+        async function testStep2SemesterRegistration() {
+            addResult('Step 2: Semester Registration', 'loading', 'Testing semester registration process...');
+            
+            try {
+                const testData = await testCurrentState();
+                if (!testData) return;
+
+                const { student, accountant, semester } = testData;
+
+                // Ensure payment is approved first
+                await testStep1PaymentApproval();
+
+                // Create semester registration
+                const registrationData = {
+                    student_id: student.id,
+                    semester_period_id: semester.id,
+                    registration_status: 'approved',
+                    approved_by: accountant.id,
+                    approval_date: new Date().toISOString(),
+                    registration_notes: 'Test semester registration for two-step process'
+                };
+
+                const { data, error } = await supabase
+                    .from('student_semester_registrations')
+                    .upsert(registrationData, { onConflict: 'student_id,semester_period_id' })
+                    .select();
+
+                if (error) throw error;
+
+                // Check access after both payment approval AND semester registration
+                const { data: accessResult } = await supabase
+                    .rpc('check_student_access', { p_student_id: student.id });
+
+                const result = {
+                    registration_created: data[0],
+                    access_check: accessResult[0],
+                    expected_access: true, // Should be true now because both steps are complete
+                    actual_access: accessResult[0]?.has_access || false
+                };
+
+                const success = result.actual_access; // Should have access now
+                const status = success ? 'success' : 'error';
+                const message = success 
+                    ? 'Step 2 PASSED: Semester registration approved and student correctly granted access'
+                    : 'Step 2 FAILED: Student denied access despite having both payment approval and semester registration';
+
+                addResult('Step 2: Semester Registration', status, message, result);
+
+                return success;
+
+            } catch (error) {
+                addResult('Step 2: Semester Registration', 'error', `Error: ${error.message}`, error);
+                return false;
+            }
+        }
+
+        async function testStudentAccess() {
+            addResult('Student Access Test', 'loading', 'Testing student access control...');
+            
+            try {
+                const testData = await testCurrentState();
+                if (!testData) return;
+
+                const { student } = testData;
+
+                // Check access control
+                const { data: accessResult } = await supabase
+                    .rpc('check_student_access', { p_student_id: student.id });
+
+                if (!accessResult || accessResult.length === 0) {
+                    addResult('Student Access Test', 'error', 'No access control result returned');
+                    return;
+                }
+
+                const access = accessResult[0];
+                const result = {
+                    student: `${student.first_name} ${student.last_name} (${student.student_id})`,
+                    has_access: access.has_access,
+                    payment_approved: access.payment_approved,
+                    semester_registered: access.semester_registered,
+                    denial_reason: access.denial_reason,
+                    access_valid_until: access.access_valid_until,
+                    semester_end_date: access.semester_end_date
+                };
+
+                const status = access.has_access ? 'success' : 'warning';
+                const message = access.has_access 
+                    ? 'Student has full access - both payment and semester registration approved'
+                    : `Student access denied: ${access.denial_reason}`;
+
+                addResult('Student Access Test', status, message, result);
+
+                return access.has_access;
+
+            } catch (error) {
+                addResult('Student Access Test', 'error', `Error: ${error.message}`, error);
+                return false;
+            }
+        }
+
+        async function testCompleteWorkflow() {
+            clearResults();
+            addResult('Complete Workflow Test', 'loading', 'Testing complete two-step approval workflow...');
+            
+            const step1Success = await testStep1PaymentApproval();
+            const step2Success = await testStep2SemesterRegistration();
+            const accessSuccess = await testStudentAccess();
+            
+            const overallSuccess = step1Success && step2Success && accessSuccess;
+            const status = overallSuccess ? 'success' : 'error';
+            const message = overallSuccess 
+                ? 'Complete workflow PASSED: Two-step approval process working correctly'
+                : 'Complete workflow FAILED: Check individual step results above';
+
+            addResult('Complete Workflow Test', status, message, {
+                step1_payment_approval: step1Success,
+                step2_semester_registration: step2Success,
+                final_student_access: accessSuccess
+            });
+        }
+
+        // Auto-run current state check on page load
+        window.addEventListener('load', () => {
+            setTimeout(testCurrentState, 1000);
+        });
+    </script>
+</body>
+</html>

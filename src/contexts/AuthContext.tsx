@@ -94,7 +94,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setProfile(userProfile || null);
       setAuthState('authenticated');
 
-      // Small delay to show success state before redirecting (only for active logins)
+      // Immediate redirect for faster user experience
       setTimeout(() => {
         setIsActiveLogin(false); // Reset active login flag
         // Redirect based on role
@@ -111,10 +111,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           case 'accountant':
             router.push('/accountant/dashboard');
             break;
+          case 'principal':
+            router.push('/principal/dashboard');
+            break;
           default:
             throw new Error('Invalid user role');
         }
-      }, 1500); // 1.5 second delay to show success state
+      }, 200); // Reduced to 0.2 seconds for instant redirect
     } catch (err: any) {
       setIsActiveLogin(false); // Reset active login flag on error
       setError(err.message || 'Login failed. Please check your credentials.');

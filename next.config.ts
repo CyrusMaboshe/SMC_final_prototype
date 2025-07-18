@@ -15,6 +15,19 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // External packages for server components
   serverExternalPackages: ['@supabase/supabase-js'],
+  // Webpack configuration to handle Supabase properly
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // Ensure Supabase is properly bundled for client-side
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+      };
+    }
+    return config;
+  },
   // Image optimization for Vercel
   images: {
     domains: ['tigknjhplktzqzradmkd.supabase.co'],

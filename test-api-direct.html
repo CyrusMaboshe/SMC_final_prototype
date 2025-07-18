@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Direct API Test</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        .loading { background-color: #fff3cd; border: 1px solid #ffeaa7; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        button { margin: 5px; padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>Direct API Test for Payment Approvals</h1>
+    
+    <div>
+        <button onclick="testDirectQuery()">Test Direct Query</button>
+        <button onclick="testWithJoin()">Test With Students Join</button>
+        <button onclick="testAccountantEnrichment()">Test Accountant Enrichment</button>
+        <button onclick="testFullAPI()">Test Full API Function</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        // Initialize Supabase
+        const supabaseUrl = 'https://tigknjhplktzqzradmkd.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpZ2tuamhwbGt0enF6cmFkbWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTg5NTksImV4cCI6MjA2NjAzNDk1OX0.GhMpUkea-rEqqIKWZv9q7l_MIeZVK57Tj5oAlKC-4tY';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        function addResult(title, type, message, data = null) {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `result ${type}`;
+            
+            let content = `<h3>${title}</h3><p>${message}</p>`;
+            if (data) {
+                content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            resultDiv.innerHTML = content;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        async function testDirectQuery() {
+            addResult('Direct Query', 'loading', 'Testing direct payment_approvals query...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('payment_approvals')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    addResult('Direct Query', 'error', `Failed: ${error.message}`);
+                } else {
+                    addResult('Direct Query', 'success', `Success: ${data.length} records found`, {
+                        total: data.length,
+                        approved: data.filter(p => p.approval_status === 'approved').length,
+                        sample: data.slice(0, 2)
+                    });
+                }
+            } catch (error) {
+                addResult('Direct Query', 'error', `Exception: ${error.message}`);
+            }
+        }
+
+        async function testWithJoin() {
+            addResult('Students Join', 'loading', 'Testing payment_approvals with students join...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('payment_approvals')
+                    .select(`
+                        *,
+                        students(student_id, first_name, last_name, email)
+                    `)
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    addResult('Students Join', 'error', `Failed: ${error.message}`);
+                } else {
+                    addResult('Students Join', 'success', `Success: ${data.length} records found`, {
+                        total: data.length,
+                        sample: data.slice(0, 2)
+                    });
+                }
+            } catch (error) {
+                addResult('Students Join', 'error', `Exception: ${error.message}`);
+            }
+        }
+
+        async function testAccountantEnrichment() {
+            addResult('Accountant Enrichment', 'loading', 'Testing accountant data enrichment...');
+            
+            try {
+                // First get payment approvals
+                const { data: approvals, error } = await supabase
+                    .from('payment_approvals')
+                    .select('*')
+                    .limit(3)
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    addResult('Accountant Enrichment', 'error', `Failed to get approvals: ${error.message}`);
+                    return;
+                }
+
+                // Then enrich with accountant data
+                const enrichedData = await Promise.all(approvals.map(async (approval) => {
+                    if (approval.approved_by) {
+                        const { data: accountantData } = await supabase
+                            .from('accountants')
+                            .select('first_name, last_name, accountant_id')
+                            .or(`id.eq.${approval.approved_by},user_id.eq.${approval.approved_by}`)
+                            .single();
+                        
+                        return {
+                            ...approval,
+                            accountants: accountantData || null
+                        };
+                    }
+                    return approval;
+                }));
+
+                addResult('Accountant Enrichment', 'success', `Success: ${enrichedData.length} records enriched`, enrichedData);
+            } catch (error) {
+                addResult('Accountant Enrichment', 'error', `Exception: ${error.message}`);
+            }
+        }
+
+        async function testFullAPI() {
+            addResult('Full API Test', 'loading', 'Testing the complete getAllPaymentApprovals logic...');
+            
+            try {
+                // Simulate the full API function
+                const { data, error } = await supabase
+                    .from('payment_approvals')
+                    .select(`
+                        *,
+                        students(student_id, first_name, last_name, email)
+                    `)
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    addResult('Full API Test', 'error', `Join failed: ${error.message}`);
+                    return;
+                }
+
+                // Manually fetch accountant data for each approval
+                if (data && data.length > 0) {
+                    const enrichedData = await Promise.all(data.map(async (approval) => {
+                        if (approval.approved_by) {
+                            const { data: accountantData } = await supabase
+                                .from('accountants')
+                                .select('first_name, last_name, accountant_id')
+                                .or(`id.eq.${approval.approved_by},user_id.eq.${approval.approved_by}`)
+                                .single();
+                            
+                            return {
+                                ...approval,
+                                accountants: accountantData || null
+                            };
+                        }
+                        return approval;
+                    }));
+
+                    addResult('Full API Test', 'success', `Success: ${enrichedData.length} records with full data`, {
+                        total: enrichedData.length,
+                        approved: enrichedData.filter(p => p.approval_status === 'approved').length,
+                        with_accountant: enrichedData.filter(p => p.accountants).length,
+                        sample: enrichedData.slice(0, 2)
+                    });
+                } else {
+                    addResult('Full API Test', 'success', 'Success: No data found', { total: 0 });
+                }
+            } catch (error) {
+                addResult('Full API Test', 'error', `Exception: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>

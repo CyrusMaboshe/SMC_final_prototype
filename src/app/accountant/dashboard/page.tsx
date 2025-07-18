@@ -1,10 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy } from 'react';
 import { useRouter } from 'next/navigation';
 import { authAPI, AccountantProfile, accountantAPI } from '@/lib/supabase';
-import FinancialLedger from '@/components/FinancialLedger';
-import AccountantLogs from '@/components/AccountantLogs';
+import LazyComponentWrapper, { TableSkeleton, CardSkeleton, FormSkeleton } from '@/components/LazyComponentWrapper';
+
+// Lazy load heavy components
+const FinancialLedger = lazy(() => import('@/components/FinancialLedger'));
+const DoubleEntryLedger = lazy(() => import('@/components/DoubleEntryLedger'));
+const LedgerManagement = lazy(() => import('@/components/LedgerManagement'));
+const AccountantLogs = lazy(() => import('@/components/AccountantLogs'));
+const PaymentRecording = lazy(() => import('@/components/PaymentRecording'));
+const FinancialStatementsManager = lazy(() => import('@/components/FinancialStatementsManager'));
+const AccountsOfficeManager = lazy(() => import('@/components/AccountsOfficeManager'));
+const AccountBalanceEditor = lazy(() => import('@/components/AccountBalanceEditor'));
 
 interface AccountantDashboardProps {}
 
@@ -129,34 +138,46 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = () => {
         );
 
       case 'ledger':
-        return <FinancialLedger accountantId={user?.id} />;
+        return (
+          <LazyComponentWrapper fallback={<TableSkeleton />}>
+            <LedgerManagement accountantId={user?.id || ''} />
+          </LazyComponentWrapper>
+        );
+
+      case 'double-entry':
+        return (
+          <LazyComponentWrapper fallback={<TableSkeleton />}>
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900">Double Entry Ledger System</h2>
+                <div className="text-sm text-gray-500">
+                  Complete double-entry bookkeeping view
+                </div>
+              </div>
+              <DoubleEntryLedger accountantId={user?.id} isStudentView={false} />
+            </div>
+          </LazyComponentWrapper>
+        );
+
+      case 'balance-editor':
+        return (
+          <LazyComponentWrapper fallback={<FormSkeleton />}>
+            <AccountBalanceEditor accountantId={user?.id || ''} />
+          </LazyComponentWrapper>
+        );
 
       case 'payments':
         return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Record Payments</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">💰</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Payment Recording Coming Soon</h3>
-              <p className="text-gray-600">Payment recording interface will be available here.</p>
-            </div>
-          </div>
+          <LazyComponentWrapper fallback={<FormSkeleton />}>
+            <PaymentRecording accountantId={user?.id} />
+          </LazyComponentWrapper>
         );
 
       case 'invoices':
         return (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Manage Invoices</h2>
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">📄</span>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Invoice Management Coming Soon</h3>
-              <p className="text-gray-600">Invoice management interface will be available here.</p>
-            </div>
-          </div>
+          <LazyComponentWrapper fallback={<TableSkeleton />}>
+            <FinancialStatementsManager accountantId={user?.id} />
+          </LazyComponentWrapper>
         );
 
       case 'reports':
@@ -174,7 +195,14 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = () => {
         );
 
       case 'logs':
-        return <AccountantLogs accountantId={user?.id} />;
+        return (
+          <LazyComponentWrapper fallback={<TableSkeleton />}>
+            <AccountantLogs accountantId={user?.id} />
+          </LazyComponentWrapper>
+        );
+
+      case 'access-control':
+        return <AccountsOfficeManager accountantId={user?.id} />;
 
       default:
         return <div>Tab content not found</div>;
@@ -183,17 +211,66 @@ const AccountantDashboard: React.FC<AccountantDashboardProps> = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header Skeleton */}
+        <header className="bg-white shadow-sm border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center py-4">
+              <div className="animate-pulse">
+                <div className="h-8 bg-gray-200 rounded w-48"></div>
+              </div>
+              <div className="animate-pulse">
+                <div className="h-10 bg-gray-200 rounded w-20"></div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content Skeleton */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Sidebar Skeleton */}
+            <div className="lg:w-64 flex-shrink-0">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="animate-pulse space-y-3">
+                  {[...Array(9)].map((_, i) => (
+                    <div key={i} className="h-10 bg-gray-200 rounded"></div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Content Skeleton */}
+            <div className="flex-1">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="animate-pulse space-y-6">
+                  <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="bg-gray-50 rounded-lg p-6 space-y-4">
+                        <div className="h-6 bg-gray-200 rounded w-3/4"></div>
+                        <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="h-64 bg-gray-200 rounded"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'ledger', label: 'Financial Ledger', icon: '📋' },
+    { id: 'ledger', label: 'Ledger Management', icon: '📋' },
+    { id: 'double-entry', label: 'Double Entry Ledger', icon: '⚖️' },
+    { id: 'balance-editor', label: 'Account Balance Editor', icon: '⚖️' },
     { id: 'payments', label: 'Record Payments', icon: '💰' },
-    { id: 'invoices', label: 'Manage Invoices', icon: '📄' },
+    { id: 'invoices', label: 'Financial Statements', icon: '📄' },
+    { id: 'access-control', label: 'Access Control', icon: '🔐' },
     { id: 'reports', label: 'Reports', icon: '📈' },
     { id: 'logs', label: 'Activity Logs', icon: '📜' },
   ];

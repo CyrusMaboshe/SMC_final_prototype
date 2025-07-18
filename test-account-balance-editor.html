@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Balance Editor Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .results {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .balance-display {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .balance-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        .balance-amount {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        .zero { color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Account Balance Editor Test</h1>
+        <p>This page tests the account balance editing functionality for the double ledger system.</p>
+    </div>
+
+    <div class="container test-section info">
+        <h3>🔧 Test Configuration</h3>
+        <div class="form-group">
+            <label for="supabaseUrl">Supabase URL:</label>
+            <input type="text" id="supabaseUrl" placeholder="https://your-project.supabase.co">
+        </div>
+        <div class="form-group">
+            <label for="supabaseKey">Supabase Anon Key:</label>
+            <input type="text" id="supabaseKey" placeholder="Your anon key">
+        </div>
+        <div class="form-group">
+            <label for="accountantId">Accountant ID:</label>
+            <input type="text" id="accountantId" placeholder="Accountant UUID">
+        </div>
+        <button onclick="initializeSupabase()">Initialize Connection</button>
+        <button onclick="testTableCreation()">Test Table Creation</button>
+        <div id="connectionStatus" class="results"></div>
+    </div>
+
+    <div class="container test-section">
+        <h3>👥 Student Selection</h3>
+        <div class="form-group">
+            <label for="studentSearch">Search Students:</label>
+            <input type="text" id="studentSearch" placeholder="Search by name or student ID" onkeyup="searchStudents()">
+        </div>
+        <button onclick="loadStudents()">Load Students</button>
+        <div id="studentsList" class="results"></div>
+        <div class="form-group">
+            <label for="selectedStudentId">Selected Student ID:</label>
+            <input type="text" id="selectedStudentId" placeholder="Student UUID" readonly>
+        </div>
+    </div>
+
+    <div class="container test-section">
+        <h3>💰 Current Account Balances</h3>
+        <button onclick="loadStudentBalances()">Load Student Balances</button>
+        <div id="balanceDisplay" class="balance-display"></div>
+        <div id="balanceDetails" class="results"></div>
+    </div>
+
+    <div class="container test-section">
+        <h3>⚖️ Balance Adjustment</h3>
+        <div class="form-group">
+            <label for="adjustmentType">Adjustment Type:</label>
+            <select id="adjustmentType">
+                <option value="debit">Debit (Increase Balance)</option>
+                <option value="credit">Credit (Decrease Balance)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="adjustmentAmount">Adjustment Amount (ZMW):</label>
+            <input type="number" id="adjustmentAmount" step="0.01" min="0" placeholder="0.00">
+        </div>
+        <div class="form-group">
+            <label for="adjustmentDescription">Description/Reason:</label>
+            <textarea id="adjustmentDescription" rows="3" placeholder="Enter reason for balance adjustment..."></textarea>
+        </div>
+        <div class="form-group">
+            <label for="referenceNumber">Reference Number:</label>
+            <input type="text" id="referenceNumber" placeholder="ADJ-123456">
+        </div>
+        <button onclick="applyBalanceAdjustment()">Apply Adjustment</button>
+        <div id="adjustmentResult" class="results"></div>
+    </div>
+
+    <div class="container test-section">
+        <h3>📊 Adjustment History</h3>
+        <button onclick="loadAdjustmentHistory()">Load Adjustment History</button>
+        <div id="adjustmentHistory" class="results"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        let supabase = null;
+        let students = [];
+        let selectedStudent = null;
+
+        function initializeSupabase() {
+            const url = document.getElementById('supabaseUrl').value;
+            const key = document.getElementById('supabaseKey').value;
+
+            if (!url || !key) {
+                document.getElementById('connectionStatus').textContent = 'Please enter both Supabase URL and key';
+                return;
+            }
+
+            try {
+                supabase = window.supabase.createClient(url, key);
+                document.getElementById('connectionStatus').textContent = '✅ Supabase client initialized successfully';
+
+                // Generate default reference number
+                document.getElementById('referenceNumber').value = `ADJ-${Date.now()}`;
+            } catch (error) {
+                document.getElementById('connectionStatus').textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function testTableCreation() {
+            if (!supabase) {
+                alert('Please initialize Supabase connection first');
+                return;
+            }
+
+            try {
+                const success = await ensureLedgerAdjustmentsTable();
+                if (success) {
+                    document.getElementById('connectionStatus').textContent += '\n✅ Ledger adjustments table created/verified successfully';
+                } else {
+                    document.getElementById('connectionStatus').textContent += '\n⚠️ Table creation attempted (may already exist)';
+                }
+            } catch (error) {
+                document.getElementById('connectionStatus').textContent += `\n❌ Table creation error: ${error.message}`;
+            }
+        }
+
+        async function loadStudents() {
+            if (!supabase) {
+                alert('Please initialize Supabase connection first');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('students')
+                    .select('id, student_id, first_name, last_name, email, program, year_of_study, semester, status')
+                    .eq('status', 'active')
+                    .order('first_name');
+
+                if (error) throw error;
+
+                students = data || [];
+                displayStudents(students);
+                document.getElementById('studentsList').textContent = `✅ Loaded ${students.length} students`;
+            } catch (error) {
+                document.getElementById('studentsList').textContent = `❌ Error loading students: ${error.message}`;
+            }
+        }
+
+        function displayStudents(studentsToShow) {
+            const container = document.getElementById('studentsList');
+            if (studentsToShow.length === 0) {
+                container.innerHTML = 'No students found';
+                return;
+            }
+
+            const html = studentsToShow.map(student => `
+                <div style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 4px; cursor: pointer;" 
+                     onclick="selectStudent('${student.id}', '${student.first_name} ${student.last_name}')">
+                    <strong>${student.first_name} ${student.last_name}</strong><br>
+                    ID: ${student.student_id} | ${student.program} | Year ${student.year_of_study}
+                </div>
+            `).join('');
+            
+            container.innerHTML = html;
+        }
+
+        function searchStudents() {
+            const searchTerm = document.getElementById('studentSearch').value.toLowerCase();
+            const filtered = students.filter(student =>
+                `${student.first_name} ${student.last_name} ${student.student_id}`
+                    .toLowerCase()
+                    .includes(searchTerm)
+            );
+            displayStudents(filtered);
+        }
+
+        function selectStudent(studentId, studentName) {
+            selectedStudent = students.find(s => s.id === studentId);
+            document.getElementById('selectedStudentId').value = studentId;
+            document.getElementById('studentsList').textContent = `✅ Selected: ${studentName}`;
+        }
+
+        async function loadStudentBalances() {
+            if (!supabase || !selectedStudent) {
+                alert('Please select a student first');
+                return;
+            }
+
+            try {
+                // Load financial records
+                const { data: financialRecords, error: frError } = await supabase
+                    .from('financial_records')
+                    .select('id, academic_year, semester, total_amount, amount_paid, balance, due_date, created_at')
+                    .eq('student_id', selectedStudent.id)
+                    .order('created_at');
+
+                if (frError) throw frError;
+
+                // Load payments
+                const { data: payments, error: payError } = await supabase
+                    .from('payments')
+                    .select('id, amount, payment_date, reference_number, created_at')
+                    .eq('student_id', selectedStudent.id)
+                    .order('payment_date');
+
+                if (payError) throw payError;
+
+                // Load adjustments
+                const { data: adjustments, error: adjError } = await supabase
+                    .from('ledger_adjustments')
+                    .select('id, date, description, reference_number, debit_amount, credit_amount, type, created_by, created_at')
+                    .eq('student_id', selectedStudent.id)
+                    .order('created_at');
+
+                if (adjError) throw adjError;
+
+                // Calculate balances
+                const totalOwed = (financialRecords || []).reduce((sum, record) => sum + (record.total_amount || 0), 0);
+                const totalPaid = (payments || []).reduce((sum, payment) => sum + (payment.amount || 0), 0);
+                const totalAdjustments = (adjustments || []).reduce((sum, adj) => sum + (adj.debit_amount || 0) - (adj.credit_amount || 0), 0);
+                const currentBalance = totalOwed - totalPaid + totalAdjustments;
+
+                // Display balance cards
+                const balanceDisplay = document.getElementById('balanceDisplay');
+                balanceDisplay.innerHTML = `
+                    <div class="balance-card">
+                        <div>Total Owed</div>
+                        <div class="balance-amount positive">ZMW ${totalOwed.toFixed(2)}</div>
+                    </div>
+                    <div class="balance-card">
+                        <div>Total Paid</div>
+                        <div class="balance-amount negative">ZMW ${totalPaid.toFixed(2)}</div>
+                    </div>
+                    <div class="balance-card">
+                        <div>Total Adjustments</div>
+                        <div class="balance-amount ${totalAdjustments >= 0 ? 'positive' : 'negative'}">ZMW ${totalAdjustments.toFixed(2)}</div>
+                    </div>
+                    <div class="balance-card">
+                        <div>Current Balance</div>
+                        <div class="balance-amount ${currentBalance > 0 ? 'positive' : currentBalance < 0 ? 'negative' : 'zero'}">ZMW ${currentBalance.toFixed(2)}</div>
+                    </div>
+                `;
+
+                document.getElementById('balanceDetails').textContent = `✅ Balance loaded successfully
+Financial Records: ${(financialRecords || []).length}
+Payments: ${(payments || []).length}
+Adjustments: ${(adjustments || []).length}`;
+
+            } catch (error) {
+                document.getElementById('balanceDetails').textContent = `❌ Error loading balances: ${error.message}`;
+            }
+        }
+
+        async function ensureLedgerAdjustmentsTable() {
+            try {
+                const createTableSQL = `
+                    CREATE TABLE IF NOT EXISTS ledger_adjustments (
+                        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                        student_id UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                        date DATE NOT NULL DEFAULT CURRENT_DATE,
+                        description TEXT NOT NULL,
+                        reference_number VARCHAR(100) NOT NULL,
+                        debit_amount DECIMAL(15,2) DEFAULT 0 CHECK (debit_amount >= 0),
+                        credit_amount DECIMAL(15,2) DEFAULT 0 CHECK (credit_amount >= 0),
+                        type VARCHAR(50) NOT NULL CHECK (type IN ('fee', 'payment', 'adjustment')),
+                        created_by VARCHAR(100) NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                        CONSTRAINT check_debit_or_credit CHECK (
+                            (debit_amount > 0 AND credit_amount = 0) OR
+                            (credit_amount > 0 AND debit_amount = 0)
+                        )
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_ledger_adjustments_student_id ON ledger_adjustments(student_id);
+                    CREATE INDEX IF NOT EXISTS idx_ledger_adjustments_date ON ledger_adjustments(date);
+                    CREATE INDEX IF NOT EXISTS idx_ledger_adjustments_type ON ledger_adjustments(type);
+                `;
+
+                const { error } = await supabase.rpc('execute_sql', {
+                    sql_query: createTableSQL
+                });
+
+                if (error) {
+                    console.log('Note: Could not create table via RPC:', error.message);
+                    return false;
+                } else {
+                    console.log('✅ Ledger adjustments table ensured');
+                    return true;
+                }
+            } catch (error) {
+                console.log('Note: Table creation attempt:', error.message);
+                return false;
+            }
+        }
+
+        async function applyBalanceAdjustment() {
+            if (!supabase || !selectedStudent) {
+                alert('Please select a student first');
+                return;
+            }
+
+            const accountantId = document.getElementById('accountantId').value;
+            const adjustmentType = document.getElementById('adjustmentType').value;
+            const adjustmentAmount = parseFloat(document.getElementById('adjustmentAmount').value);
+            const description = document.getElementById('adjustmentDescription').value;
+            const referenceNumber = document.getElementById('referenceNumber').value;
+
+            if (!accountantId || !adjustmentAmount || !description || !referenceNumber) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            try {
+                // Ensure table exists first
+                await ensureLedgerAdjustmentsTable();
+
+                const { data, error } = await supabase
+                    .from('ledger_adjustments')
+                    .insert([{
+                        student_id: selectedStudent.id,
+                        date: new Date().toISOString().split('T')[0],
+                        description: description,
+                        reference_number: referenceNumber,
+                        debit_amount: adjustmentType === 'debit' ? adjustmentAmount : 0,
+                        credit_amount: adjustmentType === 'credit' ? adjustmentAmount : 0,
+                        type: 'adjustment',
+                        created_by: accountantId
+                    }])
+                    .select()
+                    .single();
+
+                if (error) {
+                    console.error('Detailed error:', error);
+                    throw new Error(`Database error: ${error.message || error.details || error.hint || 'Unknown database error'}`);
+                }
+
+                document.getElementById('adjustmentResult').textContent = `✅ Balance adjustment applied successfully!
+Adjustment ID: ${data.id}
+Type: ${adjustmentType}
+Amount: ZMW ${adjustmentAmount.toFixed(2)}
+Reference: ${referenceNumber}`;
+
+                // Clear form
+                document.getElementById('adjustmentAmount').value = '';
+                document.getElementById('adjustmentDescription').value = '';
+                document.getElementById('referenceNumber').value = `ADJ-${Date.now()}`;
+
+                // Reload balances
+                await loadStudentBalances();
+
+            } catch (error) {
+                console.error('Full error object:', error);
+                document.getElementById('adjustmentResult').textContent = `❌ Error applying adjustment: ${error.message || error.toString() || 'Unknown error'}`;
+            }
+        }
+
+        async function loadAdjustmentHistory() {
+            if (!supabase || !selectedStudent) {
+                alert('Please select a student first');
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('ledger_adjustments')
+                    .select('id, date, description, reference_number, debit_amount, credit_amount, type, created_by, created_at')
+                    .eq('student_id', selectedStudent.id)
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+
+                if (error) throw error;
+
+                const history = (data || []).map(adj => `
+Date: ${adj.date}
+Reference: ${adj.reference_number}
+Type: ${adj.debit_amount > 0 ? 'Debit' : 'Credit'}
+Amount: ZMW ${(adj.debit_amount || adj.credit_amount).toFixed(2)}
+Description: ${adj.description}
+Created By: ${adj.created_by}
+---`).join('\n');
+
+                document.getElementById('adjustmentHistory').textContent = history || 'No adjustment history found';
+
+            } catch (error) {
+                document.getElementById('adjustmentHistory').textContent = `❌ Error loading history: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

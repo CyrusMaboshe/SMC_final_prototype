@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Application Submission</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Application Submission</h1>
+    <p>Use this form to submit test applications for admin review.</p>
+
+    <form id="applicationForm">
+        <div class="form-group">
+            <label for="first_name">First Name *</label>
+            <input type="text" id="first_name" name="first_name" required>
+        </div>
+
+        <div class="form-group">
+            <label for="last_name">Last Name *</label>
+            <input type="text" id="last_name" name="last_name" required>
+        </div>
+
+        <div class="form-group">
+            <label for="email">Email *</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+
+        <div class="form-group">
+            <label for="phone">Phone *</label>
+            <input type="tel" id="phone" name="phone" required>
+        </div>
+
+        <div class="form-group">
+            <label for="date_of_birth">Date of Birth *</label>
+            <input type="date" id="date_of_birth" name="date_of_birth" required>
+        </div>
+
+        <div class="form-group">
+            <label for="address">Address *</label>
+            <textarea id="address" name="address" required></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="program_interest">Program of Interest *</label>
+            <select id="program_interest" name="program_interest" required>
+                <option value="">Select a program</option>
+                <option value="General Nursing">General Nursing</option>
+                <option value="Midwifery">Midwifery</option>
+                <option value="Community Health">Community Health</option>
+                <option value="Mental Health Nursing">Mental Health Nursing</option>
+                <option value="Pediatric Nursing">Pediatric Nursing</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="education_background">Education Background *</label>
+            <textarea id="education_background" name="education_background" required></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="previous_healthcare_experience">Previous Healthcare Experience</label>
+            <textarea id="previous_healthcare_experience" name="previous_healthcare_experience"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="motivation_statement">Motivation Statement *</label>
+            <textarea id="motivation_statement" name="motivation_statement" required></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="emergency_contact_name">Emergency Contact Name *</label>
+            <input type="text" id="emergency_contact_name" name="emergency_contact_name" required>
+        </div>
+
+        <div class="form-group">
+            <label for="emergency_contact_phone">Emergency Contact Phone *</label>
+            <input type="tel" id="emergency_contact_phone" name="emergency_contact_phone" required>
+        </div>
+
+        <div class="form-group">
+            <label for="emergency_contact_relationship">Emergency Contact Relationship *</label>
+            <input type="text" id="emergency_contact_relationship" name="emergency_contact_relationship" required>
+        </div>
+
+        <button type="submit" id="submitBtn">Submit Application</button>
+    </form>
+
+    <div id="result"></div>
+
+    <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 4px;">
+        <h3>Quick Test Data</h3>
+        <button type="button" onclick="fillSampleData()">Fill Sample Data</button>
+        <p><small>Click this button to automatically fill the form with sample data for testing.</small></p>
+    </div>
+
+    <script>
+        function fillSampleData() {
+            const sampleData = {
+                first_name: 'Jane',
+                last_name: 'Smith',
+                email: 'jane.smith@example.com',
+                phone: '+260123456789',
+                date_of_birth: '1998-05-15',
+                address: '123 Main Street, Lusaka, Zambia',
+                program_interest: 'General Nursing',
+                education_background: 'Completed Grade 12 at Lusaka High School with excellent grades in Biology, Chemistry, and Mathematics.',
+                previous_healthcare_experience: 'Volunteered at University Teaching Hospital for 6 months, assisting nurses in the pediatric ward.',
+                motivation_statement: 'I am passionate about healthcare and want to make a difference in my community by providing quality nursing care. My experience volunteering at the hospital has shown me the importance of compassionate care.',
+                emergency_contact_name: 'Mary Smith',
+                emergency_contact_phone: '+260987654321',
+                emergency_contact_relationship: 'Mother'
+            };
+
+            Object.keys(sampleData).forEach(key => {
+                const element = document.getElementById(key);
+                if (element) {
+                    element.value = sampleData[key];
+                }
+            });
+        }
+
+        document.getElementById('applicationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const resultDiv = document.getElementById('result');
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+            resultDiv.textContent = 'Submitting application...';
+            resultDiv.className = 'result';
+
+            try {
+                const formData = new FormData(this);
+                const applicationData = {};
+                
+                for (let [key, value] of formData.entries()) {
+                    applicationData[key] = value;
+                }
+
+                const response = await fetch('http://localhost:3000/api/submit-application', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(applicationData)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = `✅ Application submitted successfully!\n\nApplication ID: ${data.application.id}\nStatus: ${data.application.status}\nSubmitted: ${new Date(data.application.submitted_at).toLocaleString()}`;
+                    
+                    // Reset form
+                    this.reset();
+                } else {
+                    throw new Error(data.error || 'Failed to submit application');
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Error: ${error.message}`;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Application';
+            }
+        });
+    </script>
+</body>
+</html>

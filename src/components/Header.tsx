@@ -1,95 +1,77 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useTab } from '@/contexts/TabContext';
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { activeTab, setActiveTab } = useTab();
+  const { activeTab, setActiveTab, preloadTab } = useTab();
+
+  // Optimized tab switching
+  const handleTabClick = useCallback((tab: string) => {
+    setActiveTab(tab as any);
+    setIsMenuOpen(false);
+  }, [setActiveTab]);
+
+  // Preload on hover
+  const handleTabHover = useCallback((tab: string) => {
+    preloadTab(tab as any);
+  }, [preloadTab]);
 
   return (
-    <header className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 shadow-2xl sticky top-0 z-50 backdrop-blur-sm">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
-          {/* Logo and College Name */}
-          <div className="flex items-center space-x-4">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform duration-300">
-                <span className="text-blue-900 font-bold text-xl">SMC</span>
-              </div>
+    <header className="bg-white shadow-md">
+      <div className="container mx-auto px-4">
+        <div className="flex items-center justify-between h-16">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold">SMC</span>
             </div>
-            <div className="hidden md:block">
-              <h1 className="text-white font-bold text-xl lg:text-2xl">
-                Sancta Maria College
-              </h1>
-              <p className="text-blue-200 text-sm">of Nursing and Midwifery</p>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Sancta Maria College</h1>
+              <p className="text-xs text-gray-600">Nursing and Midwifery</p>
             </div>
           </div>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-8">
+          <nav className="hidden md:flex items-center space-x-4">
             <button
-              onClick={() => setActiveTab('home')}
-              className={`text-white hover:text-blue-200 transition-colors duration-300 font-medium relative group ${
-                activeTab === 'home' ? 'text-blue-200' : ''
+              onClick={() => handleTabClick('home')}
+              onMouseEnter={() => handleTabHover('home')}
+              className={`px-3 py-2 rounded transition-colors duration-150 ${
+                activeTab === 'home' ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'
               }`}
             >
               Home
-              <span className={`absolute -bottom-1 left-0 h-0.5 bg-blue-200 transition-all duration-300 ${
-                activeTab === 'home' ? 'w-full' : 'w-0 group-hover:w-full'
-              }`}></span>
             </button>
             <button
-              onClick={() => setActiveTab('updates')}
-              className={`text-white hover:text-blue-200 transition-colors duration-300 font-medium relative group ${
-                activeTab === 'updates' ? 'text-blue-200' : ''
+              onClick={() => handleTabClick('updates')}
+              onMouseEnter={() => handleTabHover('updates')}
+              className={`px-3 py-2 rounded transition-colors duration-150 ${
+                activeTab === 'updates' ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'
               }`}
             >
               Updates
-              <span className={`absolute -bottom-1 left-0 h-0.5 bg-blue-200 transition-all duration-300 ${
-                activeTab === 'updates' ? 'w-full' : 'w-0 group-hover:w-full'
-              }`}></span>
             </button>
             <button
-              onClick={() => setActiveTab('documents')}
-              className={`text-white hover:text-blue-200 transition-colors duration-300 font-medium relative group ${
-                activeTab === 'documents' ? 'text-blue-200' : ''
+              onClick={() => handleTabClick('documents')}
+              onMouseEnter={() => handleTabHover('documents')}
+              className={`px-3 py-2 rounded transition-colors duration-150 ${
+                activeTab === 'documents' ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'
               }`}
             >
               Documents
-              <span className={`absolute -bottom-1 left-0 h-0.5 bg-blue-200 transition-all duration-300 ${
-                activeTab === 'documents' ? 'w-full' : 'w-0 group-hover:w-full'
-              }`}></span>
             </button>
             <button
-              onClick={() => setActiveTab('staffs')}
-              className={`text-white hover:text-blue-200 transition-colors duration-300 font-medium relative group ${
-                activeTab === 'staffs' ? 'text-blue-200' : ''
-              }`}
+              onClick={() => handleTabClick('apply')}
+              onMouseEnter={() => handleTabHover('apply')}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors duration-150"
             >
-              Staffs
-              <span className={`absolute -bottom-1 left-0 h-0.5 bg-blue-200 transition-all duration-300 ${
-                activeTab === 'staffs' ? 'w-full' : 'w-0 group-hover:w-full'
-              }`}></span>
+              Apply
             </button>
             <button
-              onClick={() => setActiveTab('apply')}
-              className={`px-6 py-2 rounded-full font-medium transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl ${
-                activeTab === 'apply'
-                  ? 'bg-green-600 hover:bg-green-500 text-white'
-                  : 'bg-blue-600 hover:bg-blue-500 text-white'
-              }`}
-            >
-              Apply Now
-            </button>
-            <button
-              onClick={() => setActiveTab('login')}
-              className={`px-6 py-2 rounded-full font-medium transition-all duration-300 transform hover:scale-105 ${
-                activeTab === 'login'
-                  ? 'bg-white text-blue-900 border-2 border-white'
-                  : 'border-2 border-white text-white hover:bg-white hover:text-blue-900'
-              }`}
+              onClick={() => handleTabClick('login')}
+              onMouseEnter={() => handleTabHover('login')}
+              className="border border-blue-600 text-blue-600 px-4 py-2 rounded hover:bg-blue-600 hover:text-white transition-colors duration-150"
             >
               Login
             </button>
@@ -99,7 +81,7 @@ const Header = () => {
           <div className="md:hidden">
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="text-white hover:text-blue-200 focus:outline-none focus:text-blue-200 transition-colors duration-300"
+              className="p-2 rounded-lg text-muted hover:bg-surface-hover hover:text-primary focus:outline-none transition-all duration-300"
             >
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 {isMenuOpen ? (
@@ -113,86 +95,114 @@ const Header = () => {
         </div>
 
         {/* Mobile Navigation */}
-        <div className={`md:hidden transition-all duration-300 ease-in-out ${isMenuOpen ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
-          <div className="px-2 pt-2 pb-3 space-y-1 bg-blue-800 rounded-lg mt-2 shadow-lg">
+        <div className={`md:hidden transition-all duration-300 ease-in-out ${isMenuOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
+          <div className="bg-white border-t border-gray-200 mx-2 mt-4 p-4 space-y-2 rounded-lg shadow-lg">
             <button
               onClick={() => {
                 setActiveTab('home');
                 setIsMenuOpen(false);
               }}
-              className={`block w-full text-left px-3 py-2 rounded-md transition-all duration-300 ${
+              className={`block w-full text-left px-4 py-3 rounded-lg transition-colors duration-200 font-medium ${
                 activeTab === 'home'
-                  ? 'text-blue-200 bg-blue-700'
-                  : 'text-white hover:text-blue-200 hover:bg-blue-700'
+                  ? 'text-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
               }`}
             >
-              Home
+              <span className="flex items-center">
+                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+                Home
+              </span>
             </button>
             <button
               onClick={() => {
                 setActiveTab('updates');
                 setIsMenuOpen(false);
               }}
-              className={`block w-full text-left px-3 py-2 rounded-md transition-all duration-300 ${
+              className={`block w-full text-left px-4 py-3 rounded-lg transition-colors duration-200 font-medium ${
                 activeTab === 'updates'
-                  ? 'text-blue-200 bg-blue-700'
-                  : 'text-white hover:text-blue-200 hover:bg-blue-700'
+                  ? 'text-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
               }`}
             >
-              Updates
+              <span className="flex items-center">
+                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 0h10m-10 0a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V6a2 2 0 00-2-2" />
+                </svg>
+                Updates
+              </span>
             </button>
             <button
               onClick={() => {
                 setActiveTab('documents');
                 setIsMenuOpen(false);
               }}
-              className={`block w-full text-left px-3 py-2 rounded-md transition-all duration-300 ${
+              className={`block w-full text-left px-4 py-3 rounded-lg transition-colors duration-200 font-medium ${
                 activeTab === 'documents'
-                  ? 'text-blue-200 bg-blue-700'
-                  : 'text-white hover:text-blue-200 hover:bg-blue-700'
+                  ? 'text-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
               }`}
             >
-              Documents
+              <span className="flex items-center">
+                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Documents
+              </span>
             </button>
             <button
               onClick={() => {
                 setActiveTab('staffs');
                 setIsMenuOpen(false);
               }}
-              className={`block w-full text-left px-3 py-2 rounded-md transition-all duration-300 ${
+              className={`block w-full text-left px-4 py-3 rounded-lg transition-colors duration-200 font-medium ${
                 activeTab === 'staffs'
-                  ? 'text-blue-200 bg-blue-700'
-                  : 'text-white hover:text-blue-200 hover:bg-blue-700'
+                  ? 'text-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
               }`}
             >
-              Staffs
+              <span className="flex items-center">
+                <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Staffs
+              </span>
             </button>
-            <button
-              onClick={() => {
-                setActiveTab('apply');
-                setIsMenuOpen(false);
-              }}
-              className={`block w-full px-3 py-2 rounded-md font-medium transition-all duration-300 text-center ${
-                activeTab === 'apply'
-                  ? 'bg-green-600 hover:bg-green-500 text-white'
-                  : 'bg-blue-600 hover:bg-blue-500 text-white'
-              }`}
-            >
-              Apply Now
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('login');
-                setIsMenuOpen(false);
-              }}
-              className={`block w-full px-3 py-2 rounded-md font-medium transition-all duration-300 text-center ${
-                activeTab === 'login'
-                  ? 'bg-white text-blue-900 border-2 border-white'
-                  : 'border-2 border-white text-white hover:bg-white hover:text-blue-900'
-              }`}
-            >
-              Login
-            </button>
+            <div className="pt-4 border-t border-gray-200 space-y-3">
+              <button
+                onClick={() => {
+                  setActiveTab('apply');
+                  setIsMenuOpen(false);
+                }}
+                className={`w-full py-3 rounded-lg font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors duration-200 ${
+                  activeTab === 'apply' ? 'bg-blue-700' : ''
+                }`}
+              >
+                <span className="flex items-center justify-center">
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Apply Now
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('login');
+                  setIsMenuOpen(false);
+                }}
+                className={`w-full py-3 rounded-lg font-semibold border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white transition-colors duration-200 ${
+                  activeTab === 'login' ? 'bg-blue-600 text-white' : ''
+                }`}
+              >
+                <span className="flex items-center justify-center">
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                  </svg>
+                  Login
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

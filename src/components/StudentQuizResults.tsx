@@ -176,61 +176,102 @@ const StudentQuizResults: React.FC<StudentQuizResultsProps> = ({ studentId }) =>
           <p className="text-gray-600">Your quiz results will appear here after completing quizzes.</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {quizResults.map((result) => (
-            <div key={result.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900 mr-3">
-                      {result.quizzes.title}
-                    </h3>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getGradeBadgeColor(result.percentage)}`}>
-                      {getGrade(result.percentage)} Grade
-                    </span>
-                  </div>
-                  
-                  <p className="text-sm text-gray-600 mb-3">
-                    Course: {result.quizzes.courses.course_code} - {result.quizzes.courses.course_name}
-                  </p>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <span className="font-medium text-gray-600">Score:</span>
-                      <div className="text-gray-900">{result.score}/{result.quizzes.total_marks}</div>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-600">Percentage:</span>
-                      <div className={`font-medium ${getGradeColor(result.percentage)}`}>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Quiz Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Course
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Score
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Percentage
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Grade
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Time Taken
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Attempt
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Completed
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {quizResults.map((result) => (
+                  <tr key={result.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {result.quizzes.title}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">
+                        {result.quizzes.courses.course_code}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {result.quizzes.courses.course_name}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="text-sm font-medium text-gray-900">
+                        {result.score}/{result.quizzes.total_marks}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className={`text-sm font-medium ${getGradeColor(result.percentage)}`}>
                         {result.percentage.toFixed(1)}%
                       </div>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-600">Time Taken:</span>
-                      <div className="text-gray-900">{formatTime(result.time_taken)}</div>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-600">Attempt:</span>
-                      <div className="text-gray-900">#{result.attempt_number}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 text-sm text-gray-500">
-                    Completed on {new Date(result.completed_at).toLocaleString()}
-                  </div>
-                </div>
-
-                <div className="ml-6">
-                  <button
-                    onClick={() => setSelectedResult(result)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    View Details
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getGradeBadgeColor(result.percentage)}`}>
+                        {getGrade(result.percentage)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="text-sm text-gray-900">
+                        {formatTime(result.time_taken)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="text-sm text-gray-900">
+                        #{result.attempt_number}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="text-sm text-gray-900">
+                        {new Date(result.completed_at).toLocaleDateString()}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(result.completed_at).toLocaleTimeString()}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <button
+                        onClick={() => setSelectedResult(result)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                      >
+                        View Details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

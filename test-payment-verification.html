@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Verification System Test</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border-color: #ffc107;
+            color: #856404;
+        }
+        .loading {
+            background-color: #d1ecf1;
+            border-color: #17a2b8;
+            color: #0c5460;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .details {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Payment Verification System Test</h1>
+        <p>This tool tests the database-level payment verification system for student registration.</p>
+        
+        <div class="section">
+            <h2>Database Functions Test</h2>
+            <button onclick="testDatabaseFunctions()">Test Database Functions</button>
+            <div id="functionsResults"></div>
+        </div>
+
+        <div class="section">
+            <h2>Payment Verification Test</h2>
+            <button onclick="testPaymentVerification()">Test Payment Verification</button>
+            <div id="verificationResults"></div>
+        </div>
+
+        <div class="section">
+            <h2>Registration with Verification Test</h2>
+            <button onclick="testRegistrationVerification()">Test Registration with Payment Verification</button>
+            <div id="registrationResults"></div>
+        </div>
+
+        <div class="section">
+            <h2>Complete System Test</h2>
+            <button onclick="runCompleteTest()">Run Complete Payment Verification Test</button>
+            <div id="completeResults"></div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Supabase client
+        const supabaseUrl = 'https://tigknjhplktzqzradmkd.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpZ2tuamhwbGt0enF6cmFkbWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU5OTI4NzQsImV4cCI6MjA1MTU2ODg3NH0.Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        function addResult(containerId, title, status, message, details = null) {
+            const container = document.getElementById(containerId);
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${status}`;
+            
+            let content = `<strong>${title}:</strong> ${message}`;
+            if (details) {
+                content += `<div class="details">${JSON.stringify(details, null, 2)}</div>`;
+            }
+            
+            resultDiv.innerHTML = content;
+            container.appendChild(resultDiv);
+        }
+
+        async function testDatabaseFunctions() {
+            const containerId = 'functionsResults';
+            document.getElementById(containerId).innerHTML = '';
+            
+            addResult(containerId, 'Database Functions', 'loading', 'Testing payment verification functions...');
+
+            try {
+                // Test verify_student_payment_approval function
+                const { data: functionData, error: functionError } = await supabase
+                    .rpc('verify_student_payment_approval', { 
+                        p_student_id: '00000000-0000-0000-0000-000000000000' 
+                    });
+
+                if (functionError && functionError.message.includes('function verify_student_payment_approval')) {
+                    addResult(containerId, 'Function Check', 'error', 
+                        'verify_student_payment_approval function not found. Please run the payment_verification_functions.sql script.');
+                    return;
+                }
+
+                addResult(containerId, 'Function Check', 'success', 
+                    'verify_student_payment_approval function exists and is callable');
+
+                // Test register_student_with_payment_verification function
+                const { data: regData, error: regError } = await supabase
+                    .rpc('register_student_with_payment_verification', {
+                        p_student_id: '00000000-0000-0000-0000-000000000000',
+                        p_semester_period_id: '00000000-0000-0000-0000-000000000000',
+                        p_registered_by: '00000000-0000-0000-0000-000000000000'
+                    });
+
+                if (regError && regError.message.includes('function register_student_with_payment_verification')) {
+                    addResult(containerId, 'Registration Function Check', 'error', 
+                        'register_student_with_payment_verification function not found. Please run the payment_verification_functions.sql script.');
+                    return;
+                }
+
+                addResult(containerId, 'Registration Function Check', 'success', 
+                    'register_student_with_payment_verification function exists and is callable');
+
+            } catch (error) {
+                addResult(containerId, 'Database Functions', 'error', 
+                    'Error testing database functions', error);
+            }
+        }
+
+        async function testPaymentVerification() {
+            const containerId = 'verificationResults';
+            document.getElementById(containerId).innerHTML = '';
+            
+            addResult(containerId, 'Payment Verification', 'loading', 'Testing payment verification logic...');
+
+            try {
+                // Get a real student for testing
+                const { data: students, error: studentError } = await supabase
+                    .from('students')
+                    .select('id, first_name, last_name, student_id')
+                    .limit(3);
+
+                if (studentError) throw studentError;
+
+                if (!students || students.length === 0) {
+                    addResult(containerId, 'Students Check', 'warning', 'No students found for testing');
+                    return;
+                }
+
+                addResult(containerId, 'Students Found', 'success', 
+                    `Found ${students.length} students for testing`, students);
+
+                // Test payment verification for each student
+                for (const student of students) {
+                    const { data: verificationData, error: verificationError } = await supabase
+                        .rpc('verify_student_payment_approval', { p_student_id: student.id });
+
+                    if (verificationError) {
+                        addResult(containerId, `Verification Error - ${student.first_name} ${student.last_name}`, 'error', 
+                            verificationError.message);
+                        continue;
+                    }
+
+                    const verification = verificationData?.[0];
+                    const status = verification?.has_valid_payment ? 'success' : 'warning';
+                    const message = verification?.has_valid_payment 
+                        ? 'Has valid payment approval' 
+                        : verification?.denial_reason || 'No valid payment';
+
+                    addResult(containerId, `${student.first_name} ${student.last_name} (${student.student_id})`, 
+                        status, message, verification);
+                }
+
+            } catch (error) {
+                addResult(containerId, 'Payment Verification', 'error', 
+                    'Error testing payment verification', error);
+            }
+        }
+
+        async function testRegistrationVerification() {
+            const containerId = 'registrationResults';
+            document.getElementById(containerId).innerHTML = '';
+            
+            addResult(containerId, 'Registration Verification', 'loading', 'Testing registration with payment verification...');
+
+            try {
+                // Get students and semester periods
+                const { data: students } = await supabase
+                    .from('students')
+                    .select('id, first_name, last_name')
+                    .limit(2);
+
+                const { data: semesters } = await supabase
+                    .from('semester_periods')
+                    .select('id, semester_name, academic_year')
+                    .eq('is_active', true)
+                    .limit(1);
+
+                const { data: accountants } = await supabase
+                    .from('accountants')
+                    .select('id, first_name, last_name')
+                    .limit(1);
+
+                if (!students?.length || !semesters?.length || !accountants?.length) {
+                    addResult(containerId, 'Data Check', 'warning', 
+                        'Missing required data for testing (students, semesters, or accountants)');
+                    return;
+                }
+
+                const student = students[0];
+                const semester = semesters[0];
+                const accountant = accountants[0];
+
+                addResult(containerId, 'Test Data', 'success', 
+                    `Testing with: ${student.first_name} ${student.last_name}, ${semester.semester_name} ${semester.academic_year}`);
+
+                // Test registration with payment verification
+                const { data: registrationData, error: registrationError } = await supabase
+                    .rpc('register_student_with_payment_verification', {
+                        p_student_id: student.id,
+                        p_semester_period_id: semester.id,
+                        p_registered_by: accountant.id,
+                        p_registration_notes: 'Test registration with payment verification'
+                    });
+
+                if (registrationError) {
+                    addResult(containerId, 'Registration Test', 'error', 
+                        registrationError.message, registrationError);
+                    return;
+                }
+
+                const result = registrationData?.[0];
+                const status = result?.success ? 'success' : 'warning';
+                const message = result?.message || 'No result returned';
+
+                addResult(containerId, 'Registration Result', status, message, result);
+
+            } catch (error) {
+                addResult(containerId, 'Registration Verification', 'error', 
+                    'Error testing registration verification', error);
+            }
+        }
+
+        async function runCompleteTest() {
+            const containerId = 'completeResults';
+            document.getElementById(containerId).innerHTML = '';
+            
+            addResult(containerId, 'Complete Test', 'loading', 'Running complete payment verification system test...');
+
+            // Run all tests in sequence
+            await testDatabaseFunctions();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testPaymentVerification();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testRegistrationVerification();
+
+            addResult(containerId, 'Complete Test', 'success', 
+                'All payment verification tests completed. Check individual sections for detailed results.');
+        }
+    </script>
+</body>
+</html>

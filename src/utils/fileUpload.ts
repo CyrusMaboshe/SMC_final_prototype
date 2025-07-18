@@ -1,5 +1,18 @@
 import { supabase } from '@/lib/supabase';
 
+/**
+ * Check if Supabase storage is accessible
+ */
+export async function checkStorageConnection(): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.storage.listBuckets();
+    return !error && data !== null;
+  } catch (error) {
+    console.error('Storage connection check failed:', error);
+    return false;
+  }
+}
+
 export interface FileUploadResult {
   path: string;
   url: string;
@@ -34,7 +47,49 @@ export interface ApplicationFileMetadata {
 }
 
 /**
- * Upload a file to Supabase Storage
+ * Simple upload function for public files (fallback)
+ */
+export async function uploadFileSimple(
+  file: File,
+  bucket: string = 'documents',
+  folder: string = ''
+): Promise<FileUploadResult> {
+  // Generate unique filename
+  const timestamp = Date.now();
+  const randomString = Math.random().toString(36).substring(2, 15);
+  const fileExtension = file.name.split('.').pop();
+  const fileName = `${timestamp}_${randomString}.${fileExtension}`;
+  const filePath = folder ? `${folder}/${fileName}` : fileName;
+
+  try {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true // Allow overwrite for simplicity
+      });
+
+    if (error) {
+      throw new Error(`Upload failed: ${error.message}`);
+    }
+
+    const { data: urlData } = supabase.storage
+      .from(bucket)
+      .getPublicUrl(filePath);
+
+    return {
+      path: filePath,
+      url: urlData.publicUrl,
+      fileName: file.name,
+      fileSize: file.size
+    };
+  } catch (error: any) {
+    throw new Error(`Simple upload failed: ${error.message}`);
+  }
+}
+
+/**
+ * Upload a file to Supabase Storage with improved error handling
  */
 export async function uploadFile(
   file: File,
@@ -57,80 +112,108 @@ export async function uploadFile(
     throw new Error(`File size ${(file.size / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${(maxSize / 1024 / 1024).toFixed(2)}MB`);
   }
 
-  // Generate unique filename
+  // Generate unique filename with better randomness
   const timestamp = Date.now();
-  const randomString = Math.random().toString(36).substring(2, 15);
+  const randomString = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   const fileExtension = file.name.split('.').pop();
   const fileName = `${timestamp}_${randomString}.${fileExtension}`;
-  
+
   // Construct file path
   const filePath = folder ? `${folder}/${fileName}` : fileName;
 
-  try {
-    // For admin-only buckets (staff-photos, applications), use server-side API to bypass RLS
-    if (bucket === 'staff-photos' || bucket === 'applications') {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('bucket', bucket);
-      if (folder) formData.append('folder', folder);
-      if (allowedTypes) formData.append('allowedTypes', JSON.stringify(allowedTypes));
-      formData.append('maxSize', maxSize.toString());
+  // Check if user is authenticated for private buckets
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user && (bucket === 'applications' || bucket === 'staff-photos' || bucket === 'submissions')) {
+    throw new Error('Authentication required for file upload. Please log in and try again.');
+  }
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
+  // Retry mechanism for failed uploads
+  const maxRetries = 3;
+  let lastError: any;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Upload attempt ${attempt}/${maxRetries} for file: ${fileName}`);
+
+      // Use different file path for retries to avoid conflicts
+      const retryFilePath = attempt > 1 ? `${folder ? folder + '/' : ''}retry_${attempt}_${fileName}` : filePath;
+
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(retryFilePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (error) {
+        console.error(`Upload attempt ${attempt} failed:`, error);
+        lastError = error;
+
+        // Don't retry for certain errors
+        if (error.message.includes('Bucket not found') ||
+            error.message.includes('Invalid bucket') ||
+            error.message.includes('File too large')) {
+          throw error;
+        }
+
+        // Wait before retry (exponential backoff)
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          continue;
+        }
+
+        throw error;
       }
 
-      return await response.json();
-    }
-
-    // For public buckets, use direct Supabase upload
-    // Upload file to Supabase Storage
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (error) {
-      throw new Error(`Upload failed: ${error.message}`);
-    }
-
-    // Get public URL (for assignments, updates, and documents) or signed URL (for submissions)
-    let url: string;
-    if (bucket === 'assignments' || bucket === 'updates' || bucket === 'documents') {
-      // Assignments, updates, and documents can be publicly accessible
+      // Success! Get public URL
       const { data: urlData } = supabase.storage
         .from(bucket)
-        .getPublicUrl(filePath);
-      url = urlData.publicUrl;
-    } else {
-      // Submissions should be private with signed URLs
-      const { data: urlData, error: urlError } = await supabase.storage
-        .from(bucket)
-        .createSignedUrl(filePath, 3600 * 24 * 7); // 7 days expiry
+        .getPublicUrl(retryFilePath);
 
-      if (urlError) {
-        throw new Error(`Failed to create signed URL: ${urlError.message}`);
+      const url = urlData.publicUrl;
+
+      console.log(`Upload successful on attempt ${attempt}`);
+      return {
+        path: retryFilePath,
+        url,
+        fileName: file.name,
+        fileSize: file.size
+      };
+
+    } catch (error: any) {
+      lastError = error;
+
+      // Don't retry for certain errors
+      if (error.message.includes('Bucket not found') ||
+          error.message.includes('Invalid bucket') ||
+          error.message.includes('File too large') ||
+          error.message.includes('Authentication required')) {
+        break;
       }
-      url = urlData.signedUrl;
-    }
 
-    return {
-      path: filePath,
-      url,
-      fileName: file.name,
-      fileSize: file.size
-    };
-  } catch (error: any) {
-    throw new Error(`File upload failed: ${error.message}`);
+      if (attempt === maxRetries) {
+        break;
+      }
+    }
   }
+
+  // All retries failed, throw the last error with user-friendly message
+  console.error('All upload attempts failed:', lastError);
+
+  if (lastError.message.includes('signature verification failed')) {
+    throw new Error('File upload authentication failed. Please refresh the page and try again.');
+  }
+  if (lastError.message.includes('Bucket not found')) {
+    throw new Error('Storage system error. Please contact support.');
+  }
+  if (lastError.message.includes('Network')) {
+    throw new Error('Network error. Please check your connection and try again.');
+  }
+  if (lastError.message.includes('timeout')) {
+    throw new Error('Upload timeout. Please try uploading a smaller file or check your connection.');
+  }
+
+  throw new Error(`File upload failed after ${maxRetries} attempts: ${lastError.message}`);
 }
 
 /**
@@ -492,7 +575,7 @@ export async function uploadApplicationFile(
   fileType: 'nrc_photo' | 'grade12_results' | 'payment_receipt',
   validationResult: FileValidationResult
 ): Promise<FileUploadResult & { metadata: ApplicationFileMetadata }> {
-  const folder = `applications/${applicantId}`;
+  const folder = applicantId;
 
   const uploadResult = await uploadFile(file, {
     bucket: 'applications',

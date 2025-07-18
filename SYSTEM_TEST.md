@@ -84,12 +84,12 @@
 
 3. **Student Views Financial Statement**
    - Login as student
-   - Go to "Invoices" tab
+   - Go to "Financial Statements" tab
    - Verify financial summary shows:
      - Total Owed: ZMW 7,000.00
      - Total Paid: ZMW 3,000.00
      - Outstanding Balance: ZMW 4,000.00
-   - Check "Invoices" tab for fee records
+   - Check "Fee Records" tab for fee records
    - Check "Payment History" tab for payment records
 
 ## Real-time Updates Test

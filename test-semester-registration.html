@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Semester Registration Test & Fix</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+            color: #856404;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .fix-btn {
+            background-color: #28a745;
+        }
+        .fix-btn:hover {
+            background-color: #218838;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+            max-height: 300px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Semester Registration Test & Fix</h1>
+        <p>This tool tests and fixes semester registration issues to ensure students can be properly registered.</p>
+        
+        <div class="grid">
+            <div>
+                <h3>Diagnostic Tests</h3>
+                <button onclick="testSemesterPeriods()">Check Semester Periods</button>
+                <button onclick="testStudentRegistrations()">Check Student Registrations</button>
+                <button onclick="testAccessControl()">Test Access Control</button>
+                <button onclick="runFullDiagnostic()">Run Full Diagnostic</button>
+            </div>
+            <div>
+                <h3>Fix Actions</h3>
+                <button class="fix-btn" onclick="createActiveSemester()">Create Active Semester</button>
+                <button class="fix-btn" onclick="registerAllStudents()">Register All Students</button>
+                <button class="fix-btn" onclick="approveAllRegistrations()">Approve All Registrations</button>
+                <button class="fix-btn" onclick="fixAccessControl()">Fix Access Control</button>
+            </div>
+        </div>
+        
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Initialize Supabase client
+        const supabaseUrl = 'https://tigknjhplktzqzradmkd.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRpZ2tuamhwbGt0enF6cmFkbWtkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0NTg5NTksImV4cCI6MjA2NjAzNDk1OX0.GhMpUkea-rEqqIKWZv9q7l_MIeZVK57Tj5oAlKC-4tY';
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        function addResult(title, status, message, data = null) {
+            const resultsDiv = document.getElementById('results');
+            const testDiv = document.createElement('div');
+            testDiv.className = `test-section ${status}`;
+            
+            let content = `<h3>${title}</h3><p>${message}</p>`;
+            if (data) {
+                content += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+            
+            testDiv.innerHTML = content;
+            resultsDiv.appendChild(testDiv);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testSemesterPeriods() {
+            addResult('Semester Periods', 'loading', 'Checking semester periods...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('semester_periods')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                
+                const activeSemesters = data.filter(s => s.is_active);
+                const openRegistration = data.filter(s => s.is_registration_open);
+                
+                const status = activeSemesters.length > 0 ? 'success' : 'error';
+                const message = `Found ${data.length} semester periods. Active: ${activeSemesters.length}, Registration Open: ${openRegistration.length}`;
+                
+                addResult('Semester Periods', status, message, {
+                    total: data.length,
+                    active: activeSemesters,
+                    registrationOpen: openRegistration
+                });
+                
+                return { total: data.length, active: activeSemesters.length, data };
+            } catch (error) {
+                addResult('Semester Periods', 'error', `Error: ${error.message}`, error);
+                return { total: 0, active: 0, data: [] };
+            }
+        }
+
+        async function testStudentRegistrations() {
+            addResult('Student Registrations', 'loading', 'Checking student registrations...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('student_semester_registrations')
+                    .select(`
+                        *,
+                        students(student_id, first_name, last_name),
+                        semester_periods(semester_name, academic_year)
+                    `)
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                
+                const approved = data.filter(r => r.registration_status === 'approved');
+                const pending = data.filter(r => r.registration_status === 'pending');
+                
+                const status = approved.length > 0 ? 'success' : 'error';
+                const message = `Found ${data.length} registrations. Approved: ${approved.length}, Pending: ${pending.length}`;
+                
+                addResult('Student Registrations', status, message, {
+                    total: data.length,
+                    approved: approved.length,
+                    pending: pending.length,
+                    registrations: data.slice(0, 5) // Show first 5
+                });
+                
+                return { total: data.length, approved: approved.length, pending: pending.length };
+            } catch (error) {
+                addResult('Student Registrations', 'error', `Error: ${error.message}`, error);
+                return { total: 0, approved: 0, pending: 0 };
+            }
+        }
+
+        async function testAccessControl() {
+            addResult('Access Control', 'loading', 'Testing access control for students...');
+            
+            try {
+                // Get a sample student
+                const { data: students, error: studentsError } = await supabase
+                    .from('students')
+                    .select('id, student_id, first_name, last_name')
+                    .limit(3);
+                
+                if (studentsError) throw studentsError;
+                
+                if (students.length === 0) {
+                    addResult('Access Control', 'error', 'No students found in database');
+                    return;
+                }
+                
+                const results = [];
+                
+                for (const student of students) {
+                    try {
+                        const { data, error } = await supabase
+                            .rpc('check_student_access', {
+                                p_student_id: student.id
+                            });
+                        
+                        if (error) throw error;
+                        
+                        results.push({
+                            student: `${student.first_name} ${student.last_name} (${student.student_id})`,
+                            access: data[0] || { has_access: false, payment_approved: false, semester_registered: false }
+                        });
+                    } catch (error) {
+                        results.push({
+                            student: `${student.first_name} ${student.last_name} (${student.student_id})`,
+                            error: error.message
+                        });
+                    }
+                }
+                
+                const hasAccess = results.filter(r => r.access && r.access.has_access).length;
+                const status = hasAccess > 0 ? 'success' : 'error';
+                const message = `Tested ${results.length} students. ${hasAccess} have access.`;
+                
+                addResult('Access Control', status, message, results);
+                
+                return results;
+            } catch (error) {
+                addResult('Access Control', 'error', `Error: ${error.message}`, error);
+                return [];
+            }
+        }
+
+        async function createActiveSemester() {
+            addResult('Create Active Semester', 'loading', 'Creating active semester period...');
+            
+            try {
+                // First check if there's already an active semester
+                const { data: existing } = await supabase
+                    .from('semester_periods')
+                    .select('*')
+                    .eq('is_active', true);
+                
+                if (existing && existing.length > 0) {
+                    addResult('Create Active Semester', 'info', 'Active semester already exists', existing[0]);
+                    return;
+                }
+                
+                // Create new active semester
+                const now = new Date();
+                const endDate = new Date(now.getTime() + (120 * 24 * 60 * 60 * 1000)); // 120 days from now
+                const regEndDate = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)); // 30 days from now
+                
+                const semesterData = {
+                    semester_name: 'Fall Semester 2024',
+                    academic_year: '2024-2025',
+                    semester_number: 1,
+                    start_date: now.toISOString().split('T')[0],
+                    end_date: endDate.toISOString().split('T')[0],
+                    registration_start_date: now.toISOString().split('T')[0],
+                    registration_end_date: regEndDate.toISOString().split('T')[0],
+                    is_active: true,
+                    is_registration_open: true
+                };
+                
+                const { data, error } = await supabase
+                    .from('semester_periods')
+                    .insert(semesterData)
+                    .select();
+                
+                if (error) throw error;
+                
+                addResult('Create Active Semester', 'success', 'Active semester created successfully!', data[0]);
+                return data[0];
+            } catch (error) {
+                addResult('Create Active Semester', 'error', `Error: ${error.message}`, error);
+                return null;
+            }
+        }
+
+        async function registerAllStudents() {
+            addResult('Register All Students', 'loading', 'Registering all students for active semester...');
+            
+            try {
+                // Get active semester
+                const { data: semesters } = await supabase
+                    .from('semester_periods')
+                    .select('*')
+                    .eq('is_active', true)
+                    .limit(1);
+                
+                if (!semesters || semesters.length === 0) {
+                    addResult('Register All Students', 'error', 'No active semester found. Create one first.');
+                    return;
+                }
+                
+                const activeSemester = semesters[0];
+                
+                // Get all students
+                const { data: students } = await supabase
+                    .from('students')
+                    .select('id, student_id, first_name, last_name')
+                    .eq('status', 'active');
+                
+                if (!students || students.length === 0) {
+                    addResult('Register All Students', 'error', 'No active students found.');
+                    return;
+                }
+                
+                const results = [];
+                
+                for (const student of students) {
+                    try {
+                        // Check if already registered
+                        const { data: existing } = await supabase
+                            .from('student_semester_registrations')
+                            .select('id')
+                            .eq('student_id', student.id)
+                            .eq('semester_period_id', activeSemester.id);
+                        
+                        if (existing && existing.length > 0) {
+                            results.push({
+                                student: `${student.first_name} ${student.last_name} (${student.student_id})`,
+                                status: 'already_registered'
+                            });
+                            continue;
+                        }
+                        
+                        // Register student
+                        const { data, error } = await supabase
+                            .from('student_semester_registrations')
+                            .insert({
+                                student_id: student.id,
+                                semester_period_id: activeSemester.id,
+                                registration_status: 'pending'
+                            })
+                            .select();
+                        
+                        if (error) throw error;
+                        
+                        results.push({
+                            student: `${student.first_name} ${student.last_name} (${student.student_id})`,
+                            status: 'registered',
+                            registration_id: data[0].id
+                        });
+                    } catch (error) {
+                        results.push({
+                            student: `${student.first_name} ${student.last_name} (${student.student_id})`,
+                            status: 'error',
+                            error: error.message
+                        });
+                    }
+                }
+                
+                const registered = results.filter(r => r.status === 'registered').length;
+                const alreadyRegistered = results.filter(r => r.status === 'already_registered').length;
+                const errors = results.filter(r => r.status === 'error').length;
+                
+                const message = `Processed ${students.length} students. Registered: ${registered}, Already registered: ${alreadyRegistered}, Errors: ${errors}`;
+                addResult('Register All Students', 'success', message, results);
+                
+                return results;
+            } catch (error) {
+                addResult('Register All Students', 'error', `Error: ${error.message}`, error);
+                return [];
+            }
+        }
+
+        async function approveAllRegistrations() {
+            addResult('Approve All Registrations', 'loading', 'Approving all pending registrations...');
+            
+            try {
+                // Get all pending registrations
+                const { data: registrations } = await supabase
+                    .from('student_semester_registrations')
+                    .select(`
+                        *,
+                        students(student_id, first_name, last_name)
+                    `)
+                    .eq('registration_status', 'pending');
+                
+                if (!registrations || registrations.length === 0) {
+                    addResult('Approve All Registrations', 'info', 'No pending registrations found.');
+                    return;
+                }
+                
+                const results = [];
+                
+                for (const registration of registrations) {
+                    try {
+                        const { data, error } = await supabase
+                            .from('student_semester_registrations')
+                            .update({
+                                registration_status: 'approved',
+                                approval_date: new Date().toISOString(),
+                                approved_by: 'system-auto-approval',
+                                registration_notes: 'Auto-approved for testing'
+                            })
+                            .eq('id', registration.id)
+                            .select();
+                        
+                        if (error) throw error;
+                        
+                        results.push({
+                            student: `${registration.students.first_name} ${registration.students.last_name} (${registration.students.student_id})`,
+                            status: 'approved'
+                        });
+                    } catch (error) {
+                        results.push({
+                            student: `${registration.students.first_name} ${registration.students.last_name} (${registration.students.student_id})`,
+                            status: 'error',
+                            error: error.message
+                        });
+                    }
+                }
+                
+                const approved = results.filter(r => r.status === 'approved').length;
+                const errors = results.filter(r => r.status === 'error').length;
+                
+                const message = `Processed ${registrations.length} registrations. Approved: ${approved}, Errors: ${errors}`;
+                addResult('Approve All Registrations', 'success', message, results);
+                
+                return results;
+            } catch (error) {
+                addResult('Approve All Registrations', 'error', `Error: ${error.message}`, error);
+                return [];
+            }
+        }
+
+        async function fixAccessControl() {
+            addResult('Fix Access Control', 'loading', 'Running comprehensive access control fix...');
+            
+            try {
+                // Step 1: Create active semester if needed
+                await createActiveSemester();
+                
+                // Step 2: Register all students
+                await registerAllStudents();
+                
+                // Step 3: Approve all registrations
+                await approveAllRegistrations();
+                
+                // Step 4: Test access control again
+                const accessResults = await testAccessControl();
+                
+                addResult('Fix Access Control', 'success', 'Access control fix completed! Check individual results above.');
+                
+                return accessResults;
+            } catch (error) {
+                addResult('Fix Access Control', 'error', `Error: ${error.message}`, error);
+                return [];
+            }
+        }
+
+        async function runFullDiagnostic() {
+            clearResults();
+            
+            addResult('Full Diagnostic', 'loading', 'Running comprehensive diagnostic...');
+            
+            const semesterResults = await testSemesterPeriods();
+            const registrationResults = await testStudentRegistrations();
+            const accessResults = await testAccessControl();
+            
+            const summary = {
+                semesters: semesterResults,
+                registrations: registrationResults,
+                access: accessResults
+            };
+            
+            addResult('Full Diagnostic Summary', 'info', 'Diagnostic completed. Check individual results above.', summary);
+        }
+
+        // Auto-run diagnostic on page load
+        window.addEventListener('load', () => {
+            setTimeout(runFullDiagnostic, 1000);
+        });
+    </script>
+</body>
+</html>
