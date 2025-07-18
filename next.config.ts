@@ -11,10 +11,12 @@ const nextConfig: NextConfig = {
     // your project has TypeScript errors.
     ignoreBuildErrors: true,
   },
-  // Optimize for Vercel deployment
-  output: 'standalone',
+  // Remove standalone output for Vercel (not needed)
+  // output: 'standalone',
   // External packages for server components
-  serverExternalPackages: ['@supabase/supabase-js'],
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/supabase-js'],
+  },
   // Webpack configuration to handle Supabase properly
   webpack: (config, { isServer }) => {
     if (!isServer) {
